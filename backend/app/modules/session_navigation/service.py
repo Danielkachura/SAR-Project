@@ -53,6 +53,13 @@ class SessionNavigationService:
         self._session_store.upsert(updated)
         return updated
 
+
+    def set_selected_overview_csv(self, session_id: str, csv_file: str | None) -> SessionState:
+        state = self.require_session(session_id)
+        updated = state.model_copy(update={"selected_overview_csv_file": csv_file})
+        self._session_store.upsert(updated)
+        return updated
+
     def require_session(self, session_id: str) -> SessionState:
         state = self._session_store.get(session_id)
         if state is None:

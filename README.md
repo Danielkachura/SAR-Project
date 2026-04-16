@@ -1,10 +1,10 @@
 # SAR-Project
 
-Phase 0 + Phase 1 foundation for the SAR Ground Station Refactor.
+Phase 0 + Phase 1 + Phase 2 (Overview) foundation for the SAR Ground Station Refactor.
 
 ## Repository layout
-- `backend/` — API skeleton, canonical models, session/inventory/artifact services, backend tests
-- `frontend/` — Session Start + Overview skeleton UI and typed API contracts
+- `backend/` — API contracts, canonical models, session/inventory services, overview services, backend tests
+- `frontend/` — Session Start + Overview UI and typed API contracts
 - `docs/` — specification docs and module/API documentation
 
 ## Backend quick start
@@ -23,9 +23,10 @@ uvicorn app.main:app --reload
 - mode detection + manual override
 - folder inventory and artifact classification
 - artifact activation and stage jump suggestion
-- API skeleton for above flows
+- overview API + CSV-level inspection payloads
+- overview frontend sections (selector, stats, charts, preview, spatial, device)
 
 ## Intentionally deferred
 - calibration / enrichment / re-id / localization algorithms
-- heavy overview rendering and map layers
+- heavy map rendering and localization overlays
 - save/resume persistence implementation

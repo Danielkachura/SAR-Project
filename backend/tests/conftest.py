@@ -6,7 +6,9 @@ import pytest
 
 from app.core.config import AppConfig
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
+from app.modules.overview.service import OverviewService
 from app.modules.session_navigation.service import SessionNavigationService
+from app.modules.spatial_presentation.service import SpatialPresentationService
 from app.storage.data_paths import DataPathResolver
 from app.storage.session_store import InMemorySessionStore
 
@@ -25,3 +27,11 @@ def services(data_root: Path):
     dataset = DatasetDiscoveryService(path_resolver=resolver)
     sessions = SessionNavigationService(dataset_service=dataset, session_store=InMemorySessionStore())
     return dataset, sessions
+
+
+@pytest.fixture()
+def overview_services(services):
+    dataset, sessions = services
+    spatial = SpatialPresentationService()
+    overview = OverviewService(session_service=sessions, dataset_service=dataset, spatial_service=spatial)
+    return dataset, sessions, overview

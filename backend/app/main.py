@@ -4,8 +4,11 @@ from fastapi import FastAPI
 
 from app.api import api_router
 from app.core.config import build_config
+from app.core.dependencies import configure_services
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
+from app.modules.overview.service import OverviewService
 from app.modules.session_navigation.service import SessionNavigationService
+from app.modules.spatial_presentation.service import SpatialPresentationService
 from app.storage.data_paths import DataPathResolver
 from app.storage.session_store import InMemorySessionStore
 
@@ -17,15 +20,18 @@ session_navigation_service = SessionNavigationService(
     dataset_service=dataset_service,
     session_store=session_store,
 )
+spatial_presentation_service = SpatialPresentationService()
+overview_service = OverviewService(
+    session_service=session_navigation_service,
+    dataset_service=dataset_service,
+    spatial_service=spatial_presentation_service,
+)
 
-
-def get_dataset_discovery_service() -> DatasetDiscoveryService:
-    return dataset_service
-
-
-def get_session_navigation_service() -> SessionNavigationService:
-    return session_navigation_service
-
+configure_services(
+    dataset_service=dataset_service,
+    session_service=session_navigation_service,
+    overview_service=overview_service,
+)
 
 app = FastAPI(title="SAR Ground Station Refactor")
 app.include_router(api_router)

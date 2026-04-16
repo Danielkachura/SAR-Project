@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.main import get_session_navigation_service
+from app.core.dependencies import get_session_navigation_service
 from app.models.api_models import CreateSessionRequest, ScanFolderListResponse, SessionResponse, UpdateModeRequest
 from app.modules.session_navigation.service import SessionNavigationService
 

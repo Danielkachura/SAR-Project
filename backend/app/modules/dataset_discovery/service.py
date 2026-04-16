@@ -108,6 +108,10 @@ class DatasetDiscoveryService:
             reid_artifacts=reid_artifacts,
         )
 
+
+    def resolve_csv_path(self, folder_id: str, file_name: str) -> Path:
+        return self._paths.folder_path(folder_id) / file_name
+
     def suggest_stage_jump(self, session: SessionState, inventory: FolderInventory) -> StageJumpSuggestion:
         if session.active_reid_artifact_id:
             return StageJumpSuggestion(

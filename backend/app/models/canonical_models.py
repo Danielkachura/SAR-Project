@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,9 +58,73 @@ class SessionState(BaseModel):
     active_raw_csv_artifact_id: str | None = None
     active_enriched_artifact_id: str | None = None
     active_reid_artifact_id: str | None = None
+    selected_overview_csv_file: str | None = None
     warnings: list[str] = Field(default_factory=list)
 
 
 class StageJumpSuggestion(BaseModel):
     suggested_stage: StageSuggestion
     reason: str
+
+
+class OverviewContext(BaseModel):
+    session_id: str
+    mode: ProtocolMode
+    selected_csv_file: str | None = None
+    available_csv_files: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class OverviewSummaryStats(BaseModel):
+    total_rows: int
+    unique_devices: int
+    average_rssi: float | None = None
+    vendor_company_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class ChartDatum(BaseModel):
+    key: str
+    count: int
+
+
+class OverviewCharts(BaseModel):
+    frame_or_event_type_distribution: list[ChartDatum] = Field(default_factory=list)
+    top_vendors: list[ChartDatum] = Field(default_factory=list)
+    rssi_histogram: list[ChartDatum] = Field(default_factory=list)
+
+
+class OverviewPreview(BaseModel):
+    columns: list[str] = Field(default_factory=list)
+    rows: list[dict[str, Any]] = Field(default_factory=list)
+    total_rows: int
+    truncated: bool = False
+
+
+class SpatialPoint(BaseModel):
+    latitude: float
+    longitude: float
+    hover_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class OverviewSpatialPayload(BaseModel):
+    points: list[SpatialPoint] = Field(default_factory=list)
+
+
+class DeviceSummary(BaseModel):
+    device_id: str
+    packet_count: int
+    average_rssi: float | None = None
+    vendor_or_company: str | None = None
+
+
+class OverviewDeviceAnalysis(BaseModel):
+    devices: list[DeviceSummary] = Field(default_factory=list)
+
+
+class OverviewPayload(BaseModel):
+    context: OverviewContext
+    summary_stats: OverviewSummaryStats | None = None
+    charts: OverviewCharts | None = None
+    preview: OverviewPreview | None = None
+    spatial: OverviewSpatialPayload | None = None
+    device_analysis: OverviewDeviceAnalysis | None = None

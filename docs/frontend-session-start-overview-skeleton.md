@@ -1,23 +1,29 @@
-# Frontend Skeleton — Session Start + Overview (Phase 0-1)
+# Frontend — Session Start + Overview (Phase 2 state)
 
 ## Purpose
-Describe the minimal frontend page skeleton delivered for early workflow wiring.
+Describe current frontend behavior for Session Start and Overview pages in the staged refactor.
 
 ## Current contract
 - `SessionStartPage`
-  - loads scan folder options
+  - lists scan folders
   - creates session from selected folder
-  - displays detected mode
   - supports manual mode override
 - `OverviewPage`
-  - renders active session context (folder + mode)
-  - declares Phase 2 TODO for charts/tables/maps/stats
-- App routing state is currently simple conditional page rendering by session presence.
+  - opens after session creation
+  - shows CSV selector for active folder
+  - shows no file-level outputs until CSV selection
+  - renders sections after selection:
+    - summary stats
+    - charts
+    - file preview (capped)
+    - spatial inspection
+    - device inspection
+- Spatial section currently renders point list + hover metadata payload marker from MOD-010 path.
 
 ## Current known TODOs
-- TODO: implement real router and layout shell.
-- TODO: add inventory display and artifact activation UI controls.
-- TODO: implement full Overview sections in Phase 2.
+- TODO: wire shared map component for spatial rendering while preserving MOD-010 ownership.
+- TODO: introduce router/layout shell as app structure matures.
+- TODO: add global filter controls after MOD-004 implementation.
 
 ## Last updated
-- 2026-04-16: Added basic Session Start and Overview skeleton pages and API bindings.
+- 2026-04-16: Upgraded Overview from placeholder to Phase 2 lightweight inspection flow.

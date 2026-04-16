@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from app.main import get_dataset_discovery_service, get_session_navigation_service
+from app.core.dependencies import get_dataset_discovery_service, get_session_navigation_service
 from app.models.api_models import ActivateArtifactRequest, InventoryResponse, SessionResponse
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
 from app.modules.session_navigation.service import SessionNavigationService
