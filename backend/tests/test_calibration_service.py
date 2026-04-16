@@ -139,3 +139,22 @@ def test_weak_fit_warns_but_approval_and_fallback_and_session_save_work(calibrat
     assert updated_session.active_calibration is not None
     assert updated_session.active_calibration.parameter_source == "fallback"
     assert updated_session.active_calibration.selection.selected_csv_file == "calib.csv"
+
+
+def test_ble_address_column_is_detected_as_candidate(calibration_services, data_root: Path) -> None:
+    folder = data_root / "mission_ble"
+    folder.mkdir()
+    (folder / "ble.csv").write_text(
+        "timestamp,address,rssi,latitude,longitude\n"
+        "1,AA:BB:CC:11:22:33,-40,37.00000,-122.00000\n"
+        "2,AA:BB:CC:11:22:33,-43,37.00003,-122.00000\n"
+        "3,DD:EE:FF:44:55:66,-47,37.00006,-122.00000\n",
+        encoding="utf-8",
+    )
+
+    _, sessions, calibration = calibration_services
+    session = sessions.create_session("mission_ble")
+
+    candidates = calibration.list_mac_candidates(session_id=session.session_id, selected_csv_file="ble.csv")
+
+    assert [item.mac for item in candidates.candidates] == ["AA:BB:CC:11:22:33", "DD:EE:FF:44:55:66"]

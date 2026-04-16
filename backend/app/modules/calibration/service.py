@@ -34,6 +34,7 @@ class CalibrationService:
         "mac",
         "device_id",
         "device_address",
+        "address",
         "addr",
         "source_mac",
         "src_mac",

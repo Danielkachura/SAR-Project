@@ -22,6 +22,7 @@ class OverviewService:
         "device_id",
         "mac",
         "device_address",
+        "address",
         "addr",
         "source_mac",
         "src_mac",

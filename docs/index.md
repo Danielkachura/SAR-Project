@@ -22,7 +22,7 @@ This repository contains the refactor of the SAR Ground Station system.
 
 ## 3. API and Frontend Docs
 - [API Contracts — Phase 0 + Phase 1 + Phase 2 (Overview) + Phase 3 (Calibration) + Phase 4 (Enrichment)](./api-phase0-phase1.md)
-- [Frontend — Session Start + Overview + Calibration (Phase 3 state)](./frontend-session-start-overview-skeleton.md)
+- [Frontend — Session Start + Overview + Calibration + Enrichment (Phase 4 state)](./frontend-session-start-overview-skeleton.md)
 
 ## 4. Source Priority
 1. Part A — Core System Specification

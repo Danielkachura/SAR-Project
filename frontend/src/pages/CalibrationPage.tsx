@@ -23,6 +23,7 @@ interface Props {
   session: SessionState;
   onSessionUpdate: (session: SessionState) => void;
   onBackToOverview: () => void;
+  onOpenEnrichment: () => void;
 }
 
 const fallbackPresets: CalibrationFallbackPreset[] = [
@@ -43,7 +44,12 @@ const fallbackPresets: CalibrationFallbackPreset[] = [
   },
 ];
 
-export function CalibrationPage({ session, onSessionUpdate, onBackToOverview }: Props) {
+export function CalibrationPage({
+  session,
+  onSessionUpdate,
+  onBackToOverview,
+  onOpenEnrichment,
+}: Props) {
   const [availableCsvFiles, setAvailableCsvFiles] = useState<string[]>([]);
   const [selectedCsv, setSelectedCsv] = useState<string>(session.selected_overview_csv_file ?? "");
   const [candidateMacs, setCandidateMacs] = useState<CalibrationCandidateRecord[]>([]);
@@ -163,7 +169,8 @@ export function CalibrationPage({ session, onSessionUpdate, onBackToOverview }: 
     <section>
       <h1>Calibration</h1>
       <p>Session folder: {session.scan_folder_name}</p>
-      <button onClick={onBackToOverview}>Back to Overview</button>
+      <button onClick={onBackToOverview}>Back</button>
+      <button onClick={onOpenEnrichment}>Open Enrichment</button>
 
       <CalibrationControls
         selectedCsv={selectedCsv}
@@ -190,10 +197,6 @@ export function CalibrationPage({ session, onSessionUpdate, onBackToOverview }: 
         onManualLonChange={setManualLon}
         onRun={handleRun}
       />
-
-      <button onClick={handleRun} disabled={!canRun || isLoading}>
-        {isLoading ? "Running..." : "Run Calibration"}
-      </button>
 
       {result && (
         <>

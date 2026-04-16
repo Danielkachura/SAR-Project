@@ -182,3 +182,26 @@ export interface CalibrationFallbackPreset {
   label: string;
   parameters: CalibrationParameters;
 }
+
+export type MatchMethod = "time_identity_best_match" | "time_only_match" | "no_match";
+
+export interface EnrichmentQualityStats {
+  matched_row_ratio: number;
+  unmatched_row_ratio: number;
+  sequence_data_coverage_ratio: number;
+  fingerprint_data_coverage_ratio: number;
+  vendor_data_coverage_ratio: number;
+  match_delta_distribution: Record<string, number | null>;
+  match_score_distribution: Record<string, number | null>;
+}
+
+export interface EnrichmentRunPayload {
+  selected_csv_file: string;
+  output_artifact_id: string;
+  output_file_name: string;
+  output_path: string;
+  total_rows: number;
+  matched_rows: number;
+  quality_stats: EnrichmentQualityStats;
+  active_enriched_artifact_id: string | null;
+}

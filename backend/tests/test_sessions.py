@@ -25,3 +25,12 @@ def test_manual_mode_override_updates_source(services, data_root: Path) -> None:
 
     assert updated.mode == ProtocolMode.BLE
     assert updated.mode_source == "manual"
+
+
+def test_create_session_detects_scan_prefix_as_wifi(services, data_root: Path) -> None:
+    (data_root / "Scan_2026_01_19").mkdir()
+
+    _, sessions = services
+    state = sessions.create_session("Scan_2026_01_19")
+
+    assert state.mode == ProtocolMode.WIFI

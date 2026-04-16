@@ -1,7 +1,7 @@
-# Frontend — Session Start + Overview + Calibration (Phase 3 state)
+# Frontend — Session Start + Overview + Calibration + Enrichment (Phase 4 state)
 
 ## Purpose
-Describe current frontend behavior and runtime scaffold for Session Start and Overview pages in the staged refactor.
+Describe current frontend behavior and runtime scaffold for Session Start and staged pages through Enrichment.
 
 ## Current contract
 - Runtime scaffold:
@@ -23,15 +23,23 @@ Describe current frontend behavior and runtime scaffold for Session Start and Ov
     - spatial inspection
     - device inspection
   - includes navigation action into Calibration
+  - includes Back action to return to Session Start
 - `CalibrationPage`
   - calibration CSV selection
   - MAC candidate fetch + selection
   - GT mode controls (`manual_map_click`, `first_sample`, `mean_first_k`)
   - optional RANSAC controls
-  - calibration run action
+  - single Run Calibration action
   - scatter payload + diagnostics + warnings presentation
   - approve derived calibration action
   - fallback preset selection action
+  - includes Back action to return to Overview
+  - includes navigation action into Enrichment
+- `EnrichmentPage`
+  - opens from Calibration
+  - allows selecting CSV and running enrichment endpoint
+  - displays run summary (output artifact + quality ratios)
+  - includes Back action to return to Calibration
 - Spatial section currently renders point list + hover metadata payload marker from MOD-010 path.
 
 ## Current known TODOs
@@ -43,3 +51,4 @@ Describe current frontend behavior and runtime scaffold for Session Start and Ov
 ## Last updated
 - 2026-04-16: Added runnable frontend scaffold and local `/api` dev proxy while preserving existing Phase 2 behavior.
 - 2026-04-16: Added Calibration page flow and Phase 3 frontend contracts.
+- 2026-04-16: Added Enrichment page navigation/run flow and Back navigation controls across Overview/Calibration/Enrichment.

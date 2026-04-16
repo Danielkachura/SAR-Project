@@ -10,7 +10,7 @@ Discover scan folders and file inventory under `DATA`, classify official artifac
   - PCAP/PCAPNG files
   - official `*_ENRICHED.csv` artifacts
   - official `*_REID.csv` artifacts
-- Detects mode from selected folder name (`wifi`, `wi-fi`, `ble`; else `unknown`).
+- Detects mode from selected folder name (`ble` first, then `wifi` / `wi-fi`, then `scan*` prefix as Wi-Fi fallback; else `unknown`).
 - Provides stage jump suggestion based on active artifact and/or discovered official artifacts.
 
 ## Current known TODOs
@@ -20,3 +20,4 @@ Discover scan folders and file inventory under `DATA`, classify official artifac
 
 ## Last updated
 - 2026-04-16: Implemented folder listing, inventory classification, mode detection, and stage jump suggestion skeleton.
+- 2026-04-16: Updated mode detection fallback so folders starting with `scan` default to Wi-Fi when BLE token is absent.

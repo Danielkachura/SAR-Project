@@ -27,7 +27,7 @@ class EnrichmentService:
     _WIFI_ID_COLUMNS = ("mac", "source_mac", "src_mac", "device_id", "addr")
     _WIFI_BSSID_COLUMNS = ("bssid",)
     _WIFI_CHANNEL_COLUMNS = ("channel",)
-    _BLE_ADDR_COLUMNS = ("device_address", "addr", "mac", "device_id")
+    _BLE_ADDR_COLUMNS = ("device_address", "address", "addr", "mac", "device_id")
     _BLE_EVENT_COLUMNS = ("event_type", "type")
 
     _ENRICHMENT_COLUMNS = [
