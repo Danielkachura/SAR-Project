@@ -1,0 +1,10 @@
+{
+  "name": "sar-ground-station-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'TODO: wire frontend dev server'",
+    "build": "echo 'TODO: wire frontend build'"
+  }
+}
