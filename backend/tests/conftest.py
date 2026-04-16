@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from app.core.config import AppConfig
+from app.modules.calibration.service import CalibrationService
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
 from app.modules.overview.service import OverviewService
 from app.modules.session_navigation.service import SessionNavigationService
@@ -35,3 +36,10 @@ def overview_services(services):
     spatial = SpatialPresentationService()
     overview = OverviewService(session_service=sessions, dataset_service=dataset, spatial_service=spatial)
     return dataset, sessions, overview
+
+
+@pytest.fixture()
+def calibration_services(services):
+    dataset, sessions = services
+    calibration = CalibrationService(session_service=sessions, dataset_service=dataset)
+    return dataset, sessions, calibration

@@ -11,8 +11,13 @@ Provide centralized canonical model definitions for cross-module data contracts.
   - scan folder model
   - artifact record model
   - folder inventory model
-  - session state model (including `selected_overview_csv_file`)
+  - session state model (including `selected_overview_csv_file` and `active_calibration`)
   - stage jump suggestion model
+  - Calibration payload models:
+    - candidate listing
+    - run payload (scatter, fit line, diagnostics, warnings, derived parameters)
+    - fallback preset selection
+    - session calibration state
   - Overview payload models:
     - context
     - summary stats
@@ -29,3 +34,4 @@ Provide centralized canonical model definitions for cross-module data contracts.
 
 ## Last updated
 - 2026-04-16: Extended canonical models with Overview payload contracts for Phase 2.
+- 2026-04-16: Added canonical Calibration models/contracts for Phase 3.

@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.api import api_router
 from app.core.config import build_config
 from app.core.dependencies import configure_services
+from app.modules.calibration.service import CalibrationService
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
 from app.modules.overview.service import OverviewService
 from app.modules.session_navigation.service import SessionNavigationService
@@ -26,11 +27,16 @@ overview_service = OverviewService(
     dataset_service=dataset_service,
     spatial_service=spatial_presentation_service,
 )
+calibration_service = CalibrationService(
+    session_service=session_navigation_service,
+    dataset_service=dataset_service,
+)
 
 configure_services(
     dataset_service=dataset_service,
     session_service=session_navigation_service,
     overview_service=overview_service,
+    calibration_service=calibration_service,
 )
 
 app = FastAPI(title="SAR Ground Station Refactor")

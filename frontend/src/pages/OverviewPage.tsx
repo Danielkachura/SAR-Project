@@ -10,9 +10,11 @@ import type { OverviewPayload, SessionState } from "../types/contracts";
 
 interface Props {
   session: SessionState;
+  onSessionUpdate: (session: SessionState) => void;
+  onOpenCalibration: () => void;
 }
 
-export function OverviewPage({ session }: Props) {
+export function OverviewPage({ session, onSessionUpdate, onOpenCalibration }: Props) {
   const [selectedCsv, setSelectedCsv] = useState<string>(session.selected_overview_csv_file ?? "");
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
   const [error, setError] = useState<string>("");
@@ -22,9 +24,12 @@ export function OverviewPage({ session }: Props) {
       .then((payload) => {
         setOverview(payload);
         setError("");
+        if (session.selected_overview_csv_file !== payload.context.selected_csv_file) {
+          onSessionUpdate({ ...session, selected_overview_csv_file: payload.context.selected_csv_file });
+        }
       })
       .catch((err) => setError(String(err)));
-  }, [session.session_id, selectedCsv]);
+  }, [selectedCsv, session, onSessionUpdate]);
 
   const availableCsvFiles = overview?.context.available_csv_files ?? [];
 
@@ -33,6 +38,7 @@ export function OverviewPage({ session }: Props) {
       <h1>Overview</h1>
       <p>Active folder: {session.scan_folder_name}</p>
       <p>Mode: {session.mode}</p>
+      <button onClick={onOpenCalibration}>Open Calibration</button>
 
       <label>
         Select CSV

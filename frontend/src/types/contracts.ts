@@ -1,11 +1,57 @@
 export type ProtocolMode = "wifi" | "ble" | "unknown";
 
-export type StageSuggestion = "overview" | "reid_enrichment" | "localization";
+export type StageSuggestion = "overview" | "calibration" | "reid_enrichment" | "localization";
+
+export type CalibrationGtMode = "manual_map_click" | "first_sample" | "mean_first_k";
+
+export type CalibrationPresetName = "urban" | "open_field" | "mixed_outdoor";
 
 export interface ScanFolder {
   folder_id: string;
   folder_name: string;
   path: string;
+}
+
+export interface CalibrationParameters {
+  rssi_at_1m: number;
+  path_loss_n: number;
+  sigma: number;
+}
+
+export interface CalibrationSelection {
+  selected_csv_file: string;
+  selected_mac: string;
+}
+
+export interface CalibrationDiagnostics {
+  sample_count: number;
+  inlier_count: number;
+  inlier_ratio: number;
+  distance_min_m: number;
+  distance_max_m: number;
+  distance_span_m: number;
+  r2: number;
+}
+
+export interface CalibrationWarning {
+  code: string;
+  message: string;
+}
+
+export interface CalibrationSessionState {
+  parameter_source: "derived" | "fallback";
+  approved: boolean;
+  parameters: CalibrationParameters;
+  selection: CalibrationSelection;
+  gt_mode: CalibrationGtMode;
+  gt_first_k: number;
+  enable_ransac: boolean;
+  ransac_residual_threshold_db: number;
+  ransac_iterations: number;
+  distance_floor_m: number;
+  diagnostics: CalibrationDiagnostics | null;
+  warnings: CalibrationWarning[];
+  fallback_name: CalibrationPresetName | null;
 }
 
 export interface SessionState {
@@ -19,6 +65,7 @@ export interface SessionState {
   active_enriched_artifact_id: string | null;
   active_reid_artifact_id: string | null;
   selected_overview_csv_file: string | null;
+  active_calibration: CalibrationSessionState | null;
   warnings: string[];
 }
 
@@ -83,4 +130,55 @@ export interface OverviewPayload {
   preview: OverviewPreview | null;
   spatial: OverviewSpatialPayload | null;
   device_analysis: OverviewDeviceAnalysis | null;
+}
+
+export interface CalibrationCandidateRecord {
+  mac: string;
+  sample_count: number;
+}
+
+export interface CalibrationCandidatesPayload {
+  selected_csv_file: string;
+  candidates: CalibrationCandidateRecord[];
+}
+
+export interface CalibrationScatterPoint {
+  log10_distance: number;
+  rssi: number;
+  is_inlier: boolean;
+}
+
+export interface CalibrationFitLinePoint {
+  log10_distance: number;
+  predicted_rssi: number;
+}
+
+export interface CalibrationRunConfig {
+  gt_mode: CalibrationGtMode;
+  gt_first_k: number;
+  enable_ransac: boolean;
+  ransac_residual_threshold_db: number;
+  ransac_iterations: number;
+  distance_floor_m: number;
+  manual_gt_latitude: number | null;
+  manual_gt_longitude: number | null;
+}
+
+export interface CalibrationRunPayload {
+  selected_csv_file: string;
+  selected_mac: string;
+  gt_point_latitude: number;
+  gt_point_longitude: number;
+  config: CalibrationRunConfig;
+  scatter_points: CalibrationScatterPoint[];
+  fit_line: CalibrationFitLinePoint[];
+  parameters: CalibrationParameters;
+  diagnostics: CalibrationDiagnostics;
+  warnings: CalibrationWarning[];
+}
+
+export interface CalibrationFallbackPreset {
+  name: CalibrationPresetName;
+  label: string;
+  parameters: CalibrationParameters;
 }

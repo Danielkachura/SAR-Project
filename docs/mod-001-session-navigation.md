@@ -9,6 +9,7 @@ Manage explicit application session state and stage navigation without domain al
 - Stores detected mode and manual mode override source.
 - Stores currently active artifacts (`raw`, `enriched`, `reid`) and current stage.
 - Stores `selected_overview_csv_file` for active overview context.
+- Stores one active session-level calibration (`active_calibration`) once approved/selected.
 - Applies immediate stage updates when official artifacts are activated.
 
 ## Current known TODOs
@@ -18,3 +19,4 @@ Manage explicit application session state and stage navigation without domain al
 
 ## Last updated
 - 2026-04-16: Added selected Overview CSV state tracking for Phase 2.
+- 2026-04-16: Extended session ownership with active calibration state for Phase 3.
