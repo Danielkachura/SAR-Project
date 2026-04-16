@@ -248,3 +248,39 @@ class CalibrationFallbackSelection(BaseModel):
     selected_csv_file: str
     selected_mac: str
     preset: CalibrationFallbackPreset
+
+
+class MatchMethod(str, Enum):
+    TIME_IDENTITY_BEST_MATCH = "time_identity_best_match"
+    TIME_ONLY_MATCH = "time_only_match"
+    NO_MATCH = "no_match"
+
+
+class EnrichmentRunConfig(BaseModel):
+    match_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
+    match_time_window_ms: float = Field(default=750.0, gt=0.0)
+    time_score_weight: float = Field(default=0.6, ge=0.0, le=1.0)
+    identity_score_weight: float = Field(default=0.25, ge=0.0, le=1.0)
+    wifi_context_weight: float = Field(default=0.15, ge=0.0, le=1.0)
+    ble_context_weight: float = Field(default=0.15, ge=0.0, le=1.0)
+
+
+class EnrichmentQualityStats(BaseModel):
+    matched_row_ratio: float
+    unmatched_row_ratio: float
+    sequence_data_coverage_ratio: float
+    fingerprint_data_coverage_ratio: float
+    vendor_data_coverage_ratio: float
+    match_delta_distribution: dict[str, float | int | None] = Field(default_factory=dict)
+    match_score_distribution: dict[str, float | int | None] = Field(default_factory=dict)
+
+
+class EnrichmentRunPayload(BaseModel):
+    selected_csv_file: str
+    output_artifact_id: str
+    output_file_name: str
+    output_path: str
+    total_rows: int
+    matched_rows: int
+    quality_stats: EnrichmentQualityStats
+    active_enriched_artifact_id: str | None = None

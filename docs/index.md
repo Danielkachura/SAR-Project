@@ -14,13 +14,14 @@ This repository contains the refactor of the SAR Ground Station system.
 - [MOD-002 Dataset Discovery & Artifact Resolver](./mod-002-dataset-discovery-artifact-resolver.md)
 - [MOD-005 Overview Module](./mod-005-overview-module.md)
 - [MOD-006 Calibration Module](./mod-006-calibration-module.md)
+- [MOD-007 Enrichment Module](./mod-007-enrichment-module.md)
 - [MOD-010 Spatial Presentation (Overview Subset)](./mod-010-spatial-presentation-overview-subset.md)
 - [MOD-012 Artifact Management](./mod-012-artifact-management.md)
 - [MOD-013 Save / Resume (Skeleton)](./mod-013-save-resume-skeleton.md)
 - [MOD-014 Canonical Models & Schema](./mod-014-canonical-models-schema.md)
 
 ## 3. API and Frontend Docs
-- [API Contracts — Phase 0 + Phase 1 + Phase 2 (Overview) + Phase 3 (Calibration)](./api-phase0-phase1.md)
+- [API Contracts — Phase 0 + Phase 1 + Phase 2 (Overview) + Phase 3 (Calibration) + Phase 4 (Enrichment)](./api-phase0-phase1.md)
 - [Frontend — Session Start + Overview + Calibration (Phase 3 state)](./frontend-session-start-overview-skeleton.md)
 
 ## 4. Source Priority

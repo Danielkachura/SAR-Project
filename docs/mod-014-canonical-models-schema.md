@@ -25,13 +25,19 @@ Provide centralized canonical model definitions for cross-module data contracts.
     - preview
     - spatial payload
     - device analysis
+  - Enrichment payload models:
+    - run configuration (match threshold/window/weights)
+    - diagnostics method enum (`time_identity_best_match`, `time_only_match`, `no_match`)
+    - quality statistics bundle (ratios + match distributions)
+    - run output metadata (official artifact id/name/path + active enriched artifact reference)
 - API models compose these canonical models for public request/response contracts.
 
 ## Current known TODOs
-- TODO: add canonical scan/enriched/reid/calibration/saved-session schemas in later slices.
+- TODO: add canonical scan/reid/localization/result-analysis models in later slices.
 - TODO: add stricter schema validation rules once algorithm modules are implemented.
 - TODO: align protocol-specific column mapping with MOD-003 normalization once available.
 
 ## Last updated
 - 2026-04-16: Extended canonical models with Overview payload contracts for Phase 2.
 - 2026-04-16: Added canonical Calibration models/contracts for Phase 3.
+- 2026-04-16: Added canonical Enrichment run config, diagnostics enum, quality stats, and output metadata contracts for Phase 4.

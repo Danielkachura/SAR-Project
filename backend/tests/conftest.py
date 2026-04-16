@@ -5,8 +5,10 @@ from pathlib import Path
 import pytest
 
 from app.core.config import AppConfig
+from app.modules.artifact_management.service import ArtifactManagementService
 from app.modules.calibration.service import CalibrationService
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
+from app.modules.enrichment.service import EnrichmentService
 from app.modules.overview.service import OverviewService
 from app.modules.session_navigation.service import SessionNavigationService
 from app.modules.spatial_presentation.service import SpatialPresentationService
@@ -43,3 +45,11 @@ def calibration_services(services):
     dataset, sessions = services
     calibration = CalibrationService(session_service=sessions, dataset_service=dataset)
     return dataset, sessions, calibration
+
+
+@pytest.fixture()
+def enrichment_services(services):
+    dataset, sessions = services
+    artifact = ArtifactManagementService()
+    enrichment = EnrichmentService(session_service=sessions, dataset_service=dataset, artifact_service=artifact)
+    return dataset, sessions, enrichment

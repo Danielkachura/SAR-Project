@@ -8,6 +8,7 @@ from app.models.canonical_models import (
     CalibrationGtMode,
     CalibrationRunPayload,
     CalibrationSessionState,
+    EnrichmentRunPayload,
     FolderInventory,
     OverviewPayload,
     ProtocolMode,
@@ -93,3 +94,17 @@ class CalibrationSaveResponse(BaseModel):
 class CalibrationFallbackResponse(BaseModel):
     fallback: CalibrationFallbackSelection
     active_calibration: CalibrationSessionState
+
+
+class EnrichmentRunRequest(BaseModel):
+    selected_csv_file: str
+    match_threshold: float = Field(default=0.55, ge=0.0, le=1.0)
+    match_time_window_ms: float = Field(default=750.0, gt=0.0)
+    time_score_weight: float = Field(default=0.6, ge=0.0, le=1.0)
+    identity_score_weight: float = Field(default=0.25, ge=0.0, le=1.0)
+    wifi_context_weight: float = Field(default=0.15, ge=0.0, le=1.0)
+    ble_context_weight: float = Field(default=0.15, ge=0.0, le=1.0)
+
+
+class EnrichmentRunResponse(BaseModel):
+    enrichment: EnrichmentRunPayload
