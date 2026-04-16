@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 
+from app.api.calibration import router as calibration_router
 from app.api.inventory import router as inventory_router
 from app.api.overview import router as overview_router
 from app.api.sessions import router as sessions_router
@@ -8,3 +9,4 @@ api_router = APIRouter(prefix="/api")
 api_router.include_router(sessions_router)
 api_router.include_router(inventory_router)
 api_router.include_router(overview_router)
+api_router.include_router(calibration_router)

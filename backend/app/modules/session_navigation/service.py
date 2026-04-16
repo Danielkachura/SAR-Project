@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from app.core.errors import NotFoundError, ValidationError
-from app.models.canonical_models import ArtifactKind, SessionState, StageSuggestion
+from app.models.canonical_models import ArtifactKind, CalibrationSessionState, SessionState, StageSuggestion
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
 from app.storage.session_store import InMemorySessionStore
 
@@ -57,6 +57,20 @@ class SessionNavigationService:
     def set_selected_overview_csv(self, session_id: str, csv_file: str | None) -> SessionState:
         state = self.require_session(session_id)
         updated = state.model_copy(update={"selected_overview_csv_file": csv_file})
+        self._session_store.upsert(updated)
+        return updated
+
+
+
+    def set_active_calibration(self, session_id: str, calibration: CalibrationSessionState) -> CalibrationSessionState:
+        state = self.require_session(session_id)
+        updated = state.model_copy(update={"active_calibration": calibration})
+        self._session_store.upsert(updated)
+        return calibration
+
+    def set_current_stage(self, session_id: str, stage: StageSuggestion) -> SessionState:
+        state = self.require_session(session_id)
+        updated = state.model_copy(update={"current_stage": stage})
         self._session_store.upsert(updated)
         return updated
 

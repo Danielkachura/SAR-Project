@@ -1,4 +1,4 @@
-# Frontend — Session Start + Overview (Phase 2 state)
+# Frontend — Session Start + Overview + Calibration (Phase 3 state)
 
 ## Purpose
 Describe current frontend behavior and runtime scaffold for Session Start and Overview pages in the staged refactor.
@@ -22,12 +22,24 @@ Describe current frontend behavior and runtime scaffold for Session Start and Ov
     - file preview (capped)
     - spatial inspection
     - device inspection
+  - includes navigation action into Calibration
+- `CalibrationPage`
+  - calibration CSV selection
+  - MAC candidate fetch + selection
+  - GT mode controls (`manual_map_click`, `first_sample`, `mean_first_k`)
+  - optional RANSAC controls
+  - calibration run action
+  - scatter payload + diagnostics + warnings presentation
+  - approve derived calibration action
+  - fallback preset selection action
 - Spatial section currently renders point list + hover metadata payload marker from MOD-010 path.
 
 ## Current known TODOs
 - TODO: wire shared map component for spatial rendering while preserving MOD-010 ownership.
+- TODO: replace manual latitude/longitude input with shared map click component for calibration GT input.
 - TODO: introduce router/layout shell as app structure matures.
 - TODO: add global filter controls after MOD-004 implementation.
 
 ## Last updated
 - 2026-04-16: Added runnable frontend scaffold and local `/api` dev proxy while preserving existing Phase 2 behavior.
+- 2026-04-16: Added Calibration page flow and Phase 3 frontend contracts.
