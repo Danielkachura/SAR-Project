@@ -1,0 +1,256 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8"/>
+  <title>AirUnit Control</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    button { margin-right: 8px; }
+    #logs, #ble_logs { max-height: 240px; overflow: auto; border: 1px solid #ccc; padding: 6px; background: #fafafa; font-size: 12px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+    th, td { border: 1px solid #ddd; padding: 6px; }
+    #status, #ble_status { font-weight: bold; }
+  </style>
+</head>
+<body>
+  <h1>AirUnit Control</h1>
+  
+  <h2>WiFi Scan</h2>
+  <div style="margin-bottom: 16px;">
+    <button id="start">Start WiFi scan</button>
+    <button id="stop">Stop WiFi scan</button>
+    <span id="status">status: idle</span>
+  </div>
+
+  <h2>BLE Scan</h2>
+  <div style="margin-bottom: 16px;">
+    <button id="ble_start">Start BLE scan</button>
+    <button id="ble_stop">Stop BLE scan</button>
+    <span id="ble_status">status: idle</span>
+  </div>
+
+  <h2>Capture mode (WiFi)</h2>
+  <div style="margin-bottom:12px;">
+    <label><input type="radio" name="mode" value="hopping" checked> Channel hopping</label>
+    <label style="margin-left:12px;"><input type="radio" name="mode" value="fixed"> Fixed channel</label>
+  </div>
+  <div style="margin-bottom:8px;">
+    <label>Hopping channels (comma-separated): <input id="channels" type="text" value="1,6,11" size="16"></label>
+  </div>
+  <div style="margin-bottom:8px;">
+    <label>Hopping interval (sec): <input id="interval" type="number" step="0.1" value="0.5" style="width:80px;"></label>
+  </div>
+  <div style="margin-bottom:8px;">
+    <label>Fixed channel: <input id="fixed_channel" type="number" value="1" style="width:80px;"></label>
+  </div>
+  <button id="apply">Apply config</button>
+  <span id="config_status" style="margin-left:12px; color:green;"></span>
+
+  <h2>Live log (WiFi)</h2>
+  <pre id="logs"></pre>
+
+  <h2>Live log (BLE)</h2>
+  <pre id="ble_logs"></pre>
+
+  <h2>Files</h2>
+  <button id="refresh">Refresh list</button>
+  <table>
+    <thead><tr><th>Name</th><th>Size</th><th>Modified</th><th>Description</th><th>Download</th><th>Action</th></tr></thead>
+    <tbody id="files"></tbody>
+  </table>
+
+<script>
+const statusEl = document.getElementById('status');
+const bleStatusEl = document.getElementById('ble_status');
+const logsEl = document.getElementById('logs');
+const bleLogsEl = document.getElementById('ble_logs');
+const filesEl = document.getElementById('files');
+const modeInputs = document.querySelectorAll('input[name="mode"]');
+const channelsInput = document.getElementById('channels');
+const intervalInput = document.getElementById('interval');
+const fixedChannelInput = document.getElementById('fixed_channel');
+
+function setStatus(text) {
+  statusEl.textContent = 'status: ' + text;
+}
+
+function setBleStatus(text) {
+  bleStatusEl.textContent = 'status: ' + text;
+}
+
+function addLog(line) {
+  logsEl.textContent += line + "\n";
+  logsEl.scrollTop = logsEl.scrollHeight;
+}
+
+function addBleLog(line) {
+  bleLogsEl.textContent += line + "\n";
+  bleLogsEl.scrollTop = bleLogsEl.scrollHeight;
+}
+
+function readConfigForm() {
+  const mode = [...modeInputs].find(r => r.checked)?.value || 'hopping';
+  const channels = channelsInput.value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !Number.isNaN(n));
+  const interval_sec = parseFloat(intervalInput.value) || 0.5;
+  const fixed_channel = parseInt(fixedChannelInput.value, 10) || 1;
+  return { mode, channels, interval_sec, fixed_channel };
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch('/config/hopping');
+    const cfg = await res.json();
+    if (cfg.mode === 'fixed') {
+      document.querySelector('input[name="mode"][value="fixed"]').checked = true;
+    } else {
+      document.querySelector('input[name="mode"][value="hopping"]').checked = true;
+    }
+    channelsInput.value = (cfg.channels || []).join(',');
+    intervalInput.value = cfg.interval_sec ?? 0.5;
+    fixedChannelInput.value = cfg.fixed_channel ?? 1;
+  } catch (e) {
+    console.warn('loadConfig failed', e);
+  }
+}
+
+async function saveConfig() {
+  const cfg = readConfigForm();
+  const res = await fetch('/config/hopping', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(cfg)
+  });
+  const data = await res.json();
+  const statusEl = document.getElementById('config_status');
+  if (data.ok) {
+    statusEl.textContent = '✓ Config applied';
+    setTimeout(() => { statusEl.textContent = ''; }, 3000);
+  } else {
+    statusEl.textContent = '✗ Failed';
+    statusEl.style.color = 'red';
+  }
+  return data;
+}
+
+async function deleteFile(filename) {
+  if (!confirm(`Delete "${filename}"?\n\nThis cannot be undone.`)) {
+    return;
+  }
+  try {
+    const res = await fetch(`/logs/delete?filename=${encodeURIComponent(filename)}`, {
+      method: 'POST'
+    });
+    const data = await res.json();
+    if (data.ok) {
+      refreshFiles();
+    } else {
+      alert('Delete failed: ' + data.error);
+    }
+  } catch (e) {
+    alert('Delete error: ' + e);
+  }
+}
+
+async function refreshFiles() {
+  const res = await fetch('/logs');
+  const data = await res.json();
+  filesEl.innerHTML = '';
+  data.files.forEach(f => {
+    const tr = document.createElement('tr');
+    const descId = `desc_${f.name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    tr.innerHTML = `
+      <td>${f.name}</td>
+      <td>${(f.size_bytes/1024).toFixed(1)} KB</td>
+      <td>${new Date(f.mtime*1000).toISOString()}</td>
+      <td>
+        <input type="text" id="${descId}" value="${f.description || ''}" placeholder="Add description..." style="width:200px;">
+        <button onclick="saveDescription('${f.name}', '${descId}')">Save</button>
+      </td>
+      <td><a href="/logs/${encodeURIComponent(f.name)}" download>download</a></td>
+      <td><button onclick="deleteFile('${f.name}')" style="background-color:#f0f0f0; color:red;">Delete</button></td>
+    `;
+    filesEl.appendChild(tr);
+  });
+}
+
+async function saveDescription(filename, inputId) {
+  const input = document.getElementById(inputId);
+  const description = input.value;
+  try {
+    const res = await fetch('/logs/description', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename, description })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      input.style.borderColor = 'green';
+      setTimeout(() => { input.style.borderColor = ''; }, 1500);
+    }
+  } catch (e) {
+    input.style.borderColor = 'red';
+    console.error('saveDescription failed', e);
+  }
+}
+
+document.getElementById('start').onclick = async () => {
+  await saveConfig();
+  const res = await fetch('/scan/start', {method: 'POST'});
+  const data = await res.json();
+  setStatus(data.status);
+};
+
+document.getElementById('stop').onclick = async () => {
+  const res = await fetch('/scan/stop', {method: 'POST'});
+  const data = await res.json();
+  setStatus(data.status);
+};
+
+document.getElementById('ble_start').onclick = async () => {
+  const res = await fetch('/ble/scan/start', {method: 'POST'});
+  const data = await res.json();
+  setBleStatus(data.status);
+};
+
+document.getElementById('ble_stop').onclick = async () => {
+  const res = await fetch('/ble/scan/stop', {method: 'POST'});
+  const data = await res.json();
+  setBleStatus(data.status);
+};
+
+document.getElementById('refresh').onclick = refreshFiles;
+document.getElementById('apply').onclick = saveConfig;
+
+const ws = new WebSocket(`ws://${location.host}/ws`);
+ws.onmessage = (ev) => {
+  const msg = JSON.parse(ev.data);
+  if (msg.type === 'status') {
+    setStatus(msg.status);
+  }
+  if (msg.type === 'log') {
+    addLog(msg.line);
+    if (msg.count !== undefined) {
+      setStatus(`running(${msg.count})`);
+    }
+  }
+  if (msg.type === 'ble_status') {
+    setBleStatus(msg.status);
+  }
+  if (msg.type === 'ble_log') {
+    addBleLog(msg.line);
+    if (msg.count !== undefined) {
+      setBleStatus(`running(${msg.count})`);
+    }
+  }
+};
+
+ws.onclose = () => {
+  addLog("[ui] WebSocket closed");
+  setStatus("disconnected");
+};
+
+refreshFiles();
+loadConfig();
+</script>
+</body>
+</html>
