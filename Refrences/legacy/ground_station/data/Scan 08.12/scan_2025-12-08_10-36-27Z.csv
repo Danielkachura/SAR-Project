@@ -1,0 +1,4 @@
+timestamp_utc,frame_type,src_mac,dst_mac,bssid,ssid,rssi_dbm,channel,freq_mhz,gps_lat,gps_lon,gps_alt_m,gps_fix,gps_num_sats,gps_hdop,gps_age_ms
+1970-01-01T00:00:00Z,unknown,,,,,,1,2412,31.281700999999998,34.79378083333334,319.2,1,9,1.19,755
+1970-01-01T00:00:00Z,unknown,,,,,,1,2412,31.281700999999998,34.79378083333334,319.2,1,9,1.19,755
+1970-01-01T00:00:00Z,unknown,,,,,,1,2412,31.281700999999998,34.79378083333334,319.2,1,9,1.19,756
