@@ -8,6 +8,8 @@ from app.models.canonical_models import (
     CalibrationGtMode,
     CalibrationRunPayload,
     CalibrationSessionState,
+    EnrichmentParameters,
+    EnrichmentRunPayload,
     FolderInventory,
     OverviewPayload,
     ProtocolMode,
@@ -93,3 +95,14 @@ class CalibrationSaveResponse(BaseModel):
 class CalibrationFallbackResponse(BaseModel):
     fallback: CalibrationFallbackSelection
     active_calibration: CalibrationSessionState
+
+
+class EnrichmentRunRequest(BaseModel):
+    selected_csv_file: str
+    selected_pcap_file: str | None = None  # auto-detected by basename if omitted
+    parameters: EnrichmentParameters = Field(default_factory=EnrichmentParameters)
+
+
+class EnrichmentRunResponse(BaseModel):
+    enrichment: EnrichmentRunPayload
+    session: SessionState

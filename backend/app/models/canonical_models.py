@@ -248,3 +248,40 @@ class CalibrationFallbackSelection(BaseModel):
     selected_csv_file: str
     selected_mac: str
     preset: CalibrationFallbackPreset
+
+
+# ---------------------------------------------------------------------------
+# MOD-007 Enrichment Module
+# ---------------------------------------------------------------------------
+
+class EnrichmentMatchMethod(str, Enum):
+    TIME_IDENTITY_BEST_MATCH = "time_identity_best_match"
+    TIME_ONLY_MATCH = "time_only_match"
+    NO_MATCH = "no_match"
+
+
+class EnrichmentParameters(BaseModel):
+    # ENR-01 / ENR-02: protocol-global defaults (spec TBD — sensible starters)
+    match_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+    match_time_window_ms: float = Field(default=500.0, gt=0.0)
+    # ENR-03..06: scoring weights
+    time_score_weight: float = Field(default=0.6, ge=0.0, le=1.0)
+    identity_score_weight: float = Field(default=0.3, ge=0.0, le=1.0)
+    wifi_context_weight: float = Field(default=0.1, ge=0.0, le=1.0)
+    ble_context_weight: float = Field(default=0.1, ge=0.0, le=1.0)
+
+
+class EnrichmentDiagnostics(BaseModel):
+    total_rows: int
+    matched_rows: int
+    unmatched_rows: int
+    match_rate: float
+
+
+class EnrichmentRunPayload(BaseModel):
+    selected_csv_file: str
+    selected_pcap_file: str
+    output_enriched_file: str
+    protocol: ProtocolMode
+    parameters: EnrichmentParameters
+    diagnostics: EnrichmentDiagnostics

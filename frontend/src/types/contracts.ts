@@ -182,3 +182,54 @@ export interface CalibrationFallbackPreset {
   label: string;
   parameters: CalibrationParameters;
 }
+
+// ---------------------------------------------------------------------------
+// MOD-007 Enrichment
+// ---------------------------------------------------------------------------
+
+export type EnrichmentMatchMethod =
+  | "time_identity_best_match"
+  | "time_only_match"
+  | "no_match";
+
+export interface EnrichmentParameters {
+  match_threshold?: number;
+  match_time_window_ms?: number;
+  time_score_weight?: number;
+  identity_score_weight?: number;
+  wifi_context_weight?: number;
+  ble_context_weight?: number;
+}
+
+export interface EnrichmentDiagnostics {
+  total_rows: number;
+  matched_rows: number;
+  unmatched_rows: number;
+  match_rate: number;
+}
+
+export interface EnrichmentRunPayload {
+  selected_csv_file: string;
+  selected_pcap_file: string;
+  output_enriched_file: string;
+  protocol: ProtocolMode;
+  parameters: EnrichmentParameters;
+  diagnostics: EnrichmentDiagnostics;
+}
+
+export interface ArtifactRecord {
+  artifact_id: string;
+  file_name: string;
+  kind: string;
+  base_name: string;
+  path: string;
+  is_official: boolean;
+}
+
+export interface FolderInventory {
+  folder_id: string;
+  raw_csv_files: ArtifactRecord[];
+  pcap_files: ArtifactRecord[];
+  enriched_artifacts: ArtifactRecord[];
+  reid_artifacts: ArtifactRecord[];
+}
