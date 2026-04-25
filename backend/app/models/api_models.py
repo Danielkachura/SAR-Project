@@ -11,6 +11,8 @@ from app.models.canonical_models import (
     EnrichmentParameters,
     EnrichmentRunPayload,
     FolderInventory,
+    ReIdParameters,
+    ReIdRunPayload,
     OverviewPayload,
     ProtocolMode,
     ScanFolder,
@@ -105,4 +107,14 @@ class EnrichmentRunRequest(BaseModel):
 
 class EnrichmentRunResponse(BaseModel):
     enrichment: EnrichmentRunPayload
+    session: SessionState
+
+
+class ReIdRunRequest(BaseModel):
+    selected_enriched_artifact_id: str | None = None
+    parameters: ReIdParameters = Field(default_factory=ReIdParameters)
+
+
+class ReIdRunResponse(BaseModel):
+    reid: ReIdRunPayload
     session: SessionState

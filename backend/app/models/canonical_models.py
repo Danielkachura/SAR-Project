@@ -254,6 +254,7 @@ class CalibrationFallbackSelection(BaseModel):
 # MOD-007 Enrichment Module
 # ---------------------------------------------------------------------------
 
+
 class EnrichmentMatchMethod(str, Enum):
     TIME_IDENTITY_BEST_MATCH = "time_identity_best_match"
     TIME_ONLY_MATCH = "time_only_match"
@@ -261,7 +262,12 @@ class EnrichmentMatchMethod(str, Enum):
 
 
 class EnrichmentParameters(BaseModel):
-    match_time_window_ms: float = Field(default=1000.0, gt=0.0)
+    match_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
+    match_time_window_ms: float = Field(default=500.0, gt=0.0)
+    time_score_weight: float = Field(default=0.6, ge=0.0, le=1.0)
+    identity_score_weight: float = Field(default=0.3, ge=0.0, le=1.0)
+    wifi_context_weight: float = Field(default=0.1, ge=0.0, le=1.0)
+    ble_context_weight: float = Field(default=0.1, ge=0.0, le=1.0)
 
 
 class EnrichmentDiagnostics(BaseModel):
@@ -278,3 +284,75 @@ class EnrichmentRunPayload(BaseModel):
     protocol: ProtocolMode
     parameters: EnrichmentParameters
     diagnostics: EnrichmentDiagnostics
+
+
+# ---------------------------------------------------------------------------
+# MOD-008 Re-ID Module
+# ---------------------------------------------------------------------------
+
+
+class ReIdMethod(str, Enum):
+    WIFI_SEQUENCE_FINGERPRINT_MATCH = "wifi_sequence_fingerprint_match"
+    WIFI_FINGERPRINT_CONTEXT_MATCH = "wifi_fingerprint_context_match"
+    WIFI_CONTEXT_ONLY_MATCH = "wifi_context_only_match"
+    BLE_ADVERTISING_SIGNATURE_MATCH = "ble_advertising_signature_match"
+    BLE_CONTEXT_ONLY_MATCH = "ble_context_only_match"
+    SINGLETON_INSUFFICIENT_EVIDENCE = "singleton_insufficient_evidence"
+
+
+class ReIdConfidenceBand(str, Enum):
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class ReIdParameters(BaseModel):
+    protocol_global_min_merge_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    wifi_strong_merge_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+    wifi_weak_context_merge_threshold: float = Field(default=0.75, ge=0.0, le=1.0)
+    ble_strong_merge_threshold: float = Field(default=0.85, ge=0.0, le=1.0)
+    ble_weak_context_merge_threshold: float = Field(default=0.78, ge=0.0, le=1.0)
+    max_time_gap_candidate_ms: float = Field(default=5000.0, gt=0.0)
+    wifi_sequence_gap_threshold: int = Field(default=32, ge=1)
+    minimum_evidence_for_non_singleton: int = Field(default=2, ge=1)
+    singleton_fallback_enabled: bool = True
+
+
+class ReIdMethodDistributionItem(BaseModel):
+    method: ReIdMethod
+    ratio: float
+
+
+class ReIdConfidenceDistributionItem(BaseModel):
+    band: ReIdConfidenceBand
+    ratio: float
+
+
+class ReIdQualityStats(BaseModel):
+    total_rows: int
+    cluster_count: int
+    singleton_cluster_count: int
+    singleton_ratio: float
+    average_cluster_size: float
+    median_cluster_size: float
+    max_cluster_size: int
+    high_confidence_ratio: float
+    medium_confidence_ratio: float
+    low_confidence_ratio: float
+    sequence_data_coverage_ratio: float
+    fingerprint_data_coverage_ratio: float
+    vendor_data_coverage_ratio: float
+    ble_signature_coverage_ratio: float
+    confidence_distribution: list[ReIdConfidenceDistributionItem] = Field(default_factory=list)
+    method_distribution: list[ReIdMethodDistributionItem] = Field(default_factory=list)
+
+
+class ReIdRunPayload(BaseModel):
+    input_enriched_file: str
+    output_reid_file: str
+    protocol: ProtocolMode
+    parameters: ReIdParameters
+    row_count: int
+    cluster_count: int
+    quality_stats: ReIdQualityStats
+    warnings: list[str] = Field(default_factory=list)

@@ -233,3 +233,70 @@ export interface FolderInventory {
   enriched_artifacts: ArtifactRecord[];
   reid_artifacts: ArtifactRecord[];
 }
+
+
+// ---------------------------------------------------------------------------
+// MOD-008 Re-ID
+// ---------------------------------------------------------------------------
+
+export type ReIdMethod =
+  | "wifi_sequence_fingerprint_match"
+  | "wifi_fingerprint_context_match"
+  | "wifi_context_only_match"
+  | "ble_advertising_signature_match"
+  | "ble_context_only_match"
+  | "singleton_insufficient_evidence";
+
+export type ReIdConfidenceBand = "high" | "medium" | "low";
+
+export interface ReIdParameters {
+  protocol_global_min_merge_threshold?: number;
+  wifi_strong_merge_threshold?: number;
+  wifi_weak_context_merge_threshold?: number;
+  ble_strong_merge_threshold?: number;
+  ble_weak_context_merge_threshold?: number;
+  max_time_gap_candidate_ms?: number;
+  wifi_sequence_gap_threshold?: number;
+  minimum_evidence_for_non_singleton?: number;
+  singleton_fallback_enabled?: boolean;
+}
+
+export interface ReIdConfidenceDistributionItem {
+  band: ReIdConfidenceBand;
+  ratio: number;
+}
+
+export interface ReIdMethodDistributionItem {
+  method: ReIdMethod;
+  ratio: number;
+}
+
+export interface ReIdQualityStats {
+  total_rows: number;
+  cluster_count: number;
+  singleton_cluster_count: number;
+  singleton_ratio: number;
+  average_cluster_size: number;
+  median_cluster_size: number;
+  max_cluster_size: number;
+  high_confidence_ratio: number;
+  medium_confidence_ratio: number;
+  low_confidence_ratio: number;
+  sequence_data_coverage_ratio: number;
+  fingerprint_data_coverage_ratio: number;
+  vendor_data_coverage_ratio: number;
+  ble_signature_coverage_ratio: number;
+  confidence_distribution: ReIdConfidenceDistributionItem[];
+  method_distribution: ReIdMethodDistributionItem[];
+}
+
+export interface ReIdRunPayload {
+  input_enriched_file: string;
+  output_reid_file: string;
+  protocol: ProtocolMode;
+  parameters: ReIdParameters;
+  row_count: number;
+  cluster_count: number;
+  quality_stats: ReIdQualityStats;
+  warnings: string[];
+}

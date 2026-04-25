@@ -14,6 +14,8 @@ This repository contains the refactor of the SAR Ground Station system.
 - [MOD-002 Dataset Discovery & Artifact Resolver](./mod-002-dataset-discovery-artifact-resolver.md)
 - [MOD-005 Overview Module](./mod-005-overview-module.md)
 - [MOD-006 Calibration Module](./mod-006-calibration-module.md)
+- [MOD-007 Enrichment Module](./mod-007-enrichment-module.md)
+- [MOD-008 Re-ID Module](./mod-008-reid-module.md)
 - [MOD-010 Spatial Presentation (Overview Subset)](./mod-010-spatial-presentation-overview-subset.md)
 - [MOD-012 Artifact Management](./mod-012-artifact-management.md)
 - [MOD-013 Save / Resume (Skeleton)](./mod-013-save-resume-skeleton.md)

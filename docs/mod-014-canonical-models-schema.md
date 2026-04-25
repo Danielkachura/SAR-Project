@@ -4,34 +4,24 @@
 Provide centralized canonical model definitions for cross-module data contracts.
 
 ## Current contract
-- Defines canonical enums/models for:
-  - protocol mode
-  - artifact kinds
-  - stage suggestion enum
-  - scan folder model
-  - artifact record model
-  - folder inventory model
-  - session state model (including `selected_overview_csv_file` and `active_calibration`)
-  - stage jump suggestion model
-  - Calibration payload models:
-    - candidate listing
-    - run payload (scatter, fit line, diagnostics, warnings, derived parameters)
-    - fallback preset selection
-    - session calibration state
-  - Overview payload models:
-    - context
-    - summary stats
-    - charts
-    - preview
-    - spatial payload
-    - device analysis
-- API models compose these canonical models for public request/response contracts.
+Defines canonical models for:
+- session/navigation/inventory
+- Overview payloads
+- Calibration payloads/state
+- Enrichment payloads and parameters (ENR-01..ENR-06)
+- Re-ID payloads and parameters
 
-## Current known TODOs
-- TODO: add canonical scan/enriched/reid/calibration/saved-session schemas in later slices.
-- TODO: add stricter schema validation rules once algorithm modules are implemented.
-- TODO: align protocol-specific column mapping with MOD-003 normalization once available.
+## Re-ID canonical additions
+- `ReIdParameters` (conservative defaults)
+- `ReIdMethod` enum
+- `ReIdConfidenceBand` enum
+- `ReIdQualityStats` and distribution models
+- `ReIdRunPayload`
+
+## Re-ID artifact schema notes
+Persisted REID output preserves upstream ENRICHED schema and includes:
+- `cluster_id`
+- `cluster_type`
 
 ## Last updated
-- 2026-04-16: Extended canonical models with Overview payload contracts for Phase 2.
-- 2026-04-16: Added canonical Calibration models/contracts for Phase 3.
+- 2026-04-25: Added canonical Re-ID models and quality payload contracts.

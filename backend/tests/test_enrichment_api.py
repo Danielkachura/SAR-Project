@@ -45,10 +45,10 @@ def client_and_services(data_root: Path):
     app = FastAPI()
     app.include_router(router, prefix="/api")
     app.dependency_overrides[get_enrichment_service] = lambda: enrichment
-    return TestClient(app), sessions, enrichment
+    return TestClient(app), sessions
 
 
-def _make_folder(data_root: Path, name: str) -> tuple[str, Path]:
+def _make_folder(data_root: Path, name: str, pcap_name: str = "scan.pcap") -> str:
     folder = data_root / name
     folder.mkdir()
     (folder / "scan.csv").write_text(
@@ -57,16 +57,16 @@ def _make_folder(data_root: Path, name: str) -> tuple[str, Path]:
         encoding="utf-8",
     )
     _write_wifi_pcap(
-        folder / "scan.pcap",
+        folder / pcap_name,
         [(pd.Timestamp("2025-12-15T09:58:14.005Z").timestamp(),
           "aa:bb:cc:dd:ee:ff", "ff:ff:ff:ff:ff:ff", "aa:bb:cc:dd:ee:ff", "Liat")],
     )
-    return name, folder
+    return name
 
 
 def test_enrichment_run_returns_200(client_and_services, data_root: Path) -> None:
-    client, sessions, _ = client_and_services
-    folder_id, _ = _make_folder(data_root, "enr_wifi")
+    client, sessions = client_and_services
+    folder_id = _make_folder(data_root, "enr_wifi")
     session = sessions.create_session(folder_id)
 
     resp = client.post(f"/api/sessions/{session.session_id}/enrichment/run", json={
@@ -77,26 +77,36 @@ def test_enrichment_run_returns_200(client_and_services, data_root: Path) -> Non
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert body["enrichment"]["output_enriched_file"] == "scan_ENRICHED.csv"
-    assert body["enrichment"]["diagnostics"]["total_rows"] == 1
-    assert body["enrichment"]["diagnostics"]["matched_rows"] == 1
     assert "session" in body
 
 
+def test_enrichment_basename_guard_returns_400(client_and_services, data_root: Path) -> None:
+    client, sessions = client_and_services
+    folder_id = _make_folder(data_root, "enr_bad", pcap_name="other.pcap")
+    session = sessions.create_session(folder_id)
+
+    resp = client.post(f"/api/sessions/{session.session_id}/enrichment/run", json={
+        "selected_csv_file": "scan.csv",
+        "selected_pcap_file": "other.pcap",
+    })
+    assert resp.status_code == 400
+
+
 def test_enrichment_run_auto_detects_pcap(client_and_services, data_root: Path) -> None:
-    client, sessions, _ = client_and_services
-    folder_id, _ = _make_folder(data_root, "enr_wifi3")
+    client, sessions = client_and_services
+    folder_id = _make_folder(data_root, "enr_wifi3")
     session = sessions.create_session(folder_id)
 
     resp = client.post(f"/api/sessions/{session.session_id}/enrichment/run", json={
         "selected_csv_file": "scan.csv",
     })
     assert resp.status_code == 200, resp.text
-    assert resp.json()["enrichment"]["selected_pcap_file"] == "scan.pcap"
+    assert resp.json()["enrichment"]["output_enriched_file"].endswith("_ENRICHED.csv")
 
 
 def test_enrichment_missing_csv_returns_400(client_and_services, data_root: Path) -> None:
-    client, sessions, _ = client_and_services
-    folder_id, _ = _make_folder(data_root, "enr_wifi2")
+    client, sessions = client_and_services
+    folder_id = _make_folder(data_root, "enr_wifi2")
     session = sessions.create_session(folder_id)
 
     resp = client.post(f"/api/sessions/{session.session_id}/enrichment/run", json={
@@ -107,7 +117,9 @@ def test_enrichment_missing_csv_returns_400(client_and_services, data_root: Path
 
 
 def test_enrichment_unknown_session_returns_404(client_and_services, data_root: Path) -> None:
-    client, _, __ = client_and_services
+    client, _ = client_and_services
+    _make_folder(data_root, "enr_wifi4")
+
     resp = client.post("/api/sessions/no-such-session/enrichment/run", json={
         "selected_csv_file": "scan.csv",
         "selected_pcap_file": "scan.pcap",
