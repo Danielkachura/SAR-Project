@@ -285,7 +285,17 @@ class EnrichmentService:
         stem = Path(selected_csv_file).stem
         output_name = f"{stem}_ENRICHED.csv"
         output_path = self._dataset_service._paths.folder_path(session.scan_folder_id) / output_name
-        enriched_df.to_csv(output_path, index=False)
+        tmp_path = output_path.with_suffix(output_path.suffix + ".tmp")
+        try:
+            enriched_df.to_csv(tmp_path, index=False)
+            tmp_path.replace(output_path)
+        except PermissionError as exc:
+            tmp_path.unlink(missing_ok=True)
+            raise ValidationError(
+                f"Cannot write enriched artifact '{output_name}'. "
+                f"The file is locked by another program (likely open in Excel). "
+                f"Close it and try again."
+            ) from exc
 
         artifact_id = f"{session.scan_folder_id}:{output_name}"
         try:
