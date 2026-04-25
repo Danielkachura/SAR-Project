@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { runEnrichment } from "../api/enrichment";
 import { runReId } from "../api/reid";
-import { apiGet } from "../api/client";
+import { apiGet, apiPost } from "../api/client";
 import type {
   ArtifactRecord,
   EnrichmentDiagnostics,
@@ -90,8 +90,9 @@ export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview 
         ble_context_weight: bleContextWeight,
       };
       const result = await runEnrichment(session.session_id, selectedCsv, selectedPcap, params);
-      setEnrichmentResult(result.diagnostics);
-      setEnrichedArtifactName(result.output_enriched_file);
+      setEnrichmentResult(result.enrichment.diagnostics);
+      setEnrichedArtifactName(result.enrichment.output_enriched_file);
+      onSessionUpdate(result.session);
       await refreshSessionAndInventory();
     } catch (err) {
       setError(String(err));
@@ -101,6 +102,10 @@ export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview 
   }
 
   async function handleRunReId() {
+    if (!activeEnriched) {
+      setError("No active enriched artifact found. Ensure Enrichment ran successfully or select one below.");
+      return;
+    }
     setIsRunningReid(true);
     setError(null);
     setReidResult(null);
@@ -116,13 +121,25 @@ export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview 
         minimum_evidence_for_non_singleton: minEvidence,
         singleton_fallback_enabled: true,
       };
-      const result = await runReId(session.session_id, params);
-      setReidResult(result);
+      const result = await runReId(session.session_id, activeEnriched.artifact_id, params);
+      setReidResult(result.reid);
+      onSessionUpdate(result.session);
       await refreshSessionAndInventory();
     } catch (err) {
       setError(String(err));
     } finally {
       setIsRunningReid(false);
+    }
+  }
+
+  async function handleActivateArtifact(artifactId: string) {
+    try {
+      const resp = await apiPost<{ session: SessionState }>(`/sessions/${session.session_id}/artifacts/activate`, {
+        artifact_id: artifactId,
+      });
+      onSessionUpdate(resp.session);
+    } catch (err) {
+      setError(String(err));
     }
   }
 
@@ -192,7 +209,30 @@ export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview 
 
       <section style={{ marginBottom: "1rem", border: "1px solid #aaa", padding: "0.75rem" }}>
         <h3>6. Re-ID Parameters</h3>
-        <p>Active ENRICHED input: <strong>{activeEnriched?.file_name ?? "None"}</strong></p>
+        <p>
+          Active ENRICHED input: 
+          <strong> {activeEnriched?.file_name ?? "None"} </strong>
+          {(!activeEnriched && session.active_enriched_artifact_id) && (
+            <span style={{ color: "orange" }}> (ID mismatch or missing from inventory)</span>
+          )}
+        </p>
+
+        {enrichedArtifacts.length > 0 && !activeEnriched && (
+          <div style={{ marginBottom: "1rem", border: "1px dashed orange", padding: "0.5rem" }}>
+            <p style={{ margin: 0, fontSize: "0.9rem" }}>Select an existing enriched artifact to use as input:</p>
+            <select 
+              value={session.active_enriched_artifact_id ?? ""} 
+              onChange={(e) => handleActivateArtifact(e.target.value)}
+              style={{ width: "100%", marginTop: "0.3rem" }}
+            >
+              <option value="">-- select enriched file --</option>
+              {enrichedArtifacts.map(a => (
+                <option key={a.artifact_id} value={a.artifact_id}>{a.file_name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
         <table style={{ borderCollapse: "collapse", width: "100%" }}><tbody>
           <tr><td>Global min merge threshold</td><td><input type="number" min={0} max={1} step={0.01} value={reidMinMerge} onChange={(e) => setReidMinMerge(Number(e.target.value))} style={{ width: "100px" }} /></td></tr>
           <tr><td>Wi-Fi strong merge threshold</td><td><input type="number" min={0} max={1} step={0.01} value={wifiStrongMerge} onChange={(e) => setWifiStrongMerge(Number(e.target.value))} style={{ width: "100px" }} /></td></tr>

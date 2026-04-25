@@ -1,15 +1,22 @@
 import { apiPost } from "./client";
-import type { ReIdParameters, ReIdRunPayload } from "../types/contracts";
+import type { ReIdParameters, ReIdRunPayload, SessionState } from "../types/contracts";
+
+export interface ReIdRunResponse {
+  reid: ReIdRunPayload;
+  session: SessionState;
+}
 
 export async function runReId(
   sessionId: string,
+  selectedEnrichedArtifactId: string | null,
   parameters?: ReIdParameters,
-): Promise<ReIdRunPayload> {
-  const payload = await apiPost<{ reid: ReIdRunPayload }>(
+): Promise<ReIdRunResponse> {
+  const payload = await apiPost<ReIdRunResponse>(
     `/sessions/${sessionId}/reid/run`,
     {
+      selected_enriched_artifact_id: selectedEnrichedArtifactId,
       parameters: parameters ?? {},
     },
   );
-  return payload.reid;
+  return payload;
 }
