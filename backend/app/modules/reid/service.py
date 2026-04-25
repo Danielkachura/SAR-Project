@@ -96,10 +96,14 @@ class ReIdService:
             raise ValidationError("ENRICHED artifact is empty; cannot run Re-ID.")
         original_columns = list(df.columns)
 
+        # OPTIMIZATION: Convert to dict records once and process
         assignments = self._assign_clusters(df, protocol=session.mode, params=parameters)
-        for idx, assignment in assignments.items():
-            df.at[idx, "cluster_id"] = assignment.cluster_id
-            df.at[idx, "cluster_type"] = assignment.cluster_type
+        
+        # Batch update the dataframe
+        cluster_ids = [assignments[i].cluster_id for i in df.index]
+        cluster_types = [assignments[i].cluster_type for i in df.index]
+        df["cluster_id"] = cluster_ids
+        df["cluster_type"] = cluster_types
 
         for col in _REQUIRED_REID_COLUMNS:
             if col not in df.columns:
@@ -125,7 +129,6 @@ class ReIdService:
         )
 
         warnings: list[str] = []
-        # TODO: If input already contains cluster columns from a prior REID-like artifact, this count check can be noisy.
         if len(original_columns) + 2 != len(df.columns):
             warnings.append("Output schema contains unexpected additional columns.")
 
@@ -147,54 +150,98 @@ class ReIdService:
         params: ReIdParameters,
     ) -> dict[int, _Assignment]:
         assignments: dict[int, _Assignment] = {}
-        cluster_members: dict[str, list[int]] = defaultdict(list)
-        next_cluster = 1
+        # active_clusters: deque of (cluster_id, last_ts, last_representative_data)
+        # We use a deque and ensure it stays sorted by timestamp so we can prune in O(1)
+        from collections import deque
+        active_clusters: deque[tuple[str, float, dict]] = deque()
+        next_cluster_num = 1
 
-        row_order = list(df.index)
-        row_order.sort(key=lambda idx: (_parse_ts_ms(df.loc[idx].get("timestamp_utc")) or float("inf"), idx))
+        # Pre-convert to records and pre-calculate timestamps/types to avoid overhead in loop
+        records = df.to_dict('records')
+        indices = list(df.index)
+        
+        rows = []
+        for i, idx in enumerate(indices):
+            rec = records[i]
+            ts = _parse_ts_ms(rec.get("timestamp_utc")) or 0.0
+            ctype = self._cluster_type_for_row(rec)
+            rows.append({
+                "idx": idx,
+                "ts": ts,
+                "record": rec,
+                "type": ctype
+            })
+        
+        # Ensure chronological order
+        rows.sort(key=lambda x: (x["ts"], x["idx"]))
 
-        for idx in row_order:
-            row = df.loc[idx]
-            best_cluster: str | None = None
+        max_gap = params.max_time_gap_candidate_ms
+
+        for i, row in enumerate(rows):
+            idx = row["idx"]
+            ts = row["ts"]
+            rec = row["record"]
+            row_type = row["type"]
+
+            if i > 0 and i % 10000 == 0:
+                print(f"[RE-ID] Processed {i}/{len(rows)} rows... (Active clusters: {len(active_clusters)})")
+
+            # 1. Prune expired clusters (O(1) average)
+            # Since we ensure active_clusters is sorted by last_ts, we only peek the front.
+            while active_clusters and (ts - active_clusters[0][1]) > max_gap:
+                active_clusters.popleft()
+
+            best_cluster_id: str | None = None
             best_score = -1.0
             best_method = ReIdMethod.SINGLETON_INSUFFICIENT_EVIDENCE
             best_type = "dynamic"
-            evidence = "insufficient"
+            best_evidence = "insufficient"
 
-            for cluster_id, members in cluster_members.items():
-                representative = df.loc[members[-1]]
-                score, method, cluster_type, evidence_text = self._pair_score(
-                    row,
-                    representative,
+            # 2. Compare against active candidates (O(active_C))
+            for cluster_id, last_ts, last_rec in active_clusters:
+                score, method, ctype, evidence_text = self._pair_score(
+                    rec,
+                    last_rec,
+                    ts,
+                    last_ts,
                     protocol=protocol,
                     params=params,
                 )
                 if score > best_score:
                     best_score = score
-                    best_cluster = cluster_id
+                    best_cluster_id = cluster_id
                     best_method = method
-                    best_type = cluster_type
-                    evidence = evidence_text
+                    best_type = ctype
+                    best_evidence = evidence_text
 
+            # 3. Decision logic
             if (
-                best_cluster
+                best_cluster_id
                 and best_score >= params.protocol_global_min_merge_threshold
-                and len(evidence.split("|")) >= params.minimum_evidence_for_non_singleton
+                and len(best_evidence.split("|")) >= params.minimum_evidence_for_non_singleton
             ):
-                # TODO: Align merge decision with per-method thresholds returned by _pair_score to keep method distribution semantics precise.
-                cluster_members[best_cluster].append(idx)
+                cluster_id = best_cluster_id
+                # UPDATE AND RE-ORDER: to keep deque sorted by ts, we remove and re-add at the end
+                # (Removing from middle of deque is O(C), but C is small here)
+                for j in range(len(active_clusters)):
+                    if active_clusters[j][0] == cluster_id:
+                        del active_clusters[j]
+                        break
+                active_clusters.append((cluster_id, ts, rec))
+                
                 score = best_score
                 method = best_method
                 cluster_type = best_type
-                cluster_id = best_cluster
+                evidence = best_evidence
                 warning = ""
             else:
-                cluster_id = f"c{next_cluster:05d}"
-                next_cluster += 1
-                cluster_members[cluster_id].append(idx)
+                cluster_id = f"c{next_cluster_num:05d}"
+                next_cluster_num += 1
+                active_clusters.append((cluster_id, ts, rec))
                 score = 0.0 if best_score < 0 else min(best_score, 0.69)
                 method = ReIdMethod.SINGLETON_INSUFFICIENT_EVIDENCE
-                cluster_type = self._cluster_type_for_row(row)
+                cluster_type = row_type
+                evidence = "insufficient"
                 warning = "singleton_due_to_low_evidence"
 
             assignments[idx] = _Assignment(
@@ -209,7 +256,7 @@ class ReIdService:
 
         return assignments
 
-    def _cluster_type_for_row(self, row: pd.Series) -> str:
+    def _cluster_type_for_row(self, row: dict | pd.Series) -> str:
         mac = _norm_text(row.get("src_mac"))
         if not mac or ":" not in mac:
             return "dynamic"
@@ -222,22 +269,35 @@ class ReIdService:
 
     def _pair_score(
         self,
-        row: pd.Series,
-        representative: pd.Series,
+        row: dict,
+        representative: dict,
+        row_ts: float,
+        rep_ts: float,
         protocol: ProtocolMode,
         params: ReIdParameters,
     ) -> tuple[float, ReIdMethod, str, str]:
-        row_ts = _parse_ts_ms(row.get("timestamp_utc"))
-        rep_ts = _parse_ts_ms(representative.get("timestamp_utc"))
-        if row_ts is None or rep_ts is None:
-            return 0.0, ReIdMethod.SINGLETON_INSUFFICIENT_EVIDENCE, "dynamic", "no_ts"
-
         delta_ms = abs(row_ts - rep_ts)
         if delta_ms > params.max_time_gap_candidate_ms:
             return 0.0, ReIdMethod.SINGLETON_INSUFFICIENT_EVIDENCE, "dynamic", "time_gap"
 
+        # 1. Identity Check (MAC Bypass)
+        mac_a = _norm_text(row.get("src_mac"))
+        mac_b = _norm_text(representative.get("src_mac"))
+        
+        is_static_a = self._cluster_type_for_row(row) == "static"
+        is_static_b = self._cluster_type_for_row(representative) == "static"
+        
+        # Static MAC Bypass: if it's the same static MAC, it's the same device.
+        if mac_a and mac_b and mac_a == mac_b and is_static_a and is_static_b:
+            return 1.0, ReIdMethod.WIFI_SEQUENCE_FINGERPRINT_MATCH if protocol == ProtocolMode.WIFI else ReIdMethod.BLE_ADVERTISING_SIGNATURE_MATCH, "static", "time|mac_static"
+
         time_score = max(0.0, 1.0 - delta_ms / params.max_time_gap_candidate_ms)
         evidence_bits = ["time"]
+        
+        # MAC match for dynamic/mixed provides strong but not absolute evidence in Forensic mode
+        mac_match = 1.0 if (mac_a and mac_b and mac_a == mac_b) else 0.0
+        if mac_match:
+            evidence_bits.append("mac")
 
         if protocol == ProtocolMode.BLE:
             sig_keys = [
@@ -262,15 +322,16 @@ class ReIdService:
                     context_matches += 1
                     evidence_bits.append(key)
 
-            score = 0.30 * time_score + 0.50 * (signature_matches / len(sig_keys)) + 0.20 * (context_matches / 2)
+            # Weighting: MAC (0.3), Time (0.2), Sig (0.3), Context (0.2)
+            score = 0.30 * mac_match + 0.20 * time_score + 0.30 * (signature_matches / len(sig_keys)) + 0.20 * (context_matches / 2)
             method = (
                 ReIdMethod.BLE_ADVERTISING_SIGNATURE_MATCH
-                if signature_matches > 0
+                if signature_matches > 0 or mac_match > 0
                 else ReIdMethod.BLE_CONTEXT_ONLY_MATCH
             )
             threshold = (
                 params.ble_strong_merge_threshold
-                if signature_matches >= 2
+                if signature_matches >= 2 or mac_match > 0
                 else params.ble_weak_context_merge_threshold
             )
         else:
@@ -279,7 +340,7 @@ class ReIdService:
             sequence_score = 0.0
             if pd.notna(seq_a) and pd.notna(seq_b):
                 try:
-                    gap = abs(int(seq_a) - int(seq_b))
+                    gap = abs(float(seq_a) - float(seq_b))
                     if gap <= params.wifi_sequence_gap_threshold:
                         sequence_score = max(0.0, 1.0 - gap / params.wifi_sequence_gap_threshold)
                         evidence_bits.append("seq")
@@ -296,16 +357,19 @@ class ReIdService:
             if bssid_match:
                 evidence_bits.append("bssid")
 
-            score = 0.20 * time_score + 0.30 * sequence_score + 0.30 * fp_match + 0.10 * vendor_match + 0.10 * bssid_match
-            if sequence_score > 0 and fp_match > 0:
+            # Weighting: MAC (0.3), Time (0.1), Seq (0.2), FP (0.25), Vendor (0.05), BSSID (0.1)
+            score = 0.30 * mac_match + 0.10 * time_score + 0.20 * sequence_score + 0.25 * fp_match + 0.05 * vendor_match + 0.10 * bssid_match
+            
+            if (sequence_score > 0 and fp_match > 0) or mac_match > 0:
                 method = ReIdMethod.WIFI_SEQUENCE_FINGERPRINT_MATCH
             elif fp_match > 0:
                 method = ReIdMethod.WIFI_FINGERPRINT_CONTEXT_MATCH
             else:
                 method = ReIdMethod.WIFI_CONTEXT_ONLY_MATCH
+                
             threshold = (
                 params.wifi_strong_merge_threshold
-                if sequence_score > 0 and fp_match > 0
+                if (sequence_score > 0 and fp_match > 0) or mac_match > 0
                 else params.wifi_weak_context_merge_threshold
             )
 
