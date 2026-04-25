@@ -9,6 +9,7 @@ from app.modules.calibration.service import CalibrationService
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
 from app.modules.enrichment.service import EnrichmentService
 from app.modules.overview.service import OverviewService
+from app.modules.reid.service import ReIdService
 from app.modules.session_navigation.service import SessionNavigationService
 from app.modules.spatial_presentation.service import SpatialPresentationService
 from app.storage.data_paths import DataPathResolver
@@ -36,6 +37,10 @@ enrichment_service = EnrichmentService(
     session_service=session_navigation_service,
     dataset_service=dataset_service,
 )
+reid_service = ReIdService(
+    session_service=session_navigation_service,
+    dataset_service=dataset_service,
+)
 
 configure_services(
     dataset_service=dataset_service,
@@ -43,6 +48,7 @@ configure_services(
     overview_service=overview_service,
     calibration_service=calibration_service,
     enrichment_service=enrichment_service,
+    reid_service=reid_service,
 )
 
 app = FastAPI(title="SAR Ground Station Refactor")

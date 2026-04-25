@@ -4,6 +4,7 @@ from app.modules.calibration.service import CalibrationService
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
 from app.modules.enrichment.service import EnrichmentService
 from app.modules.overview.service import OverviewService
+from app.modules.reid.service import ReIdService
 from app.modules.session_navigation.service import SessionNavigationService
 
 _dataset_service: DatasetDiscoveryService | None = None
@@ -11,6 +12,7 @@ _session_service: SessionNavigationService | None = None
 _overview_service: OverviewService | None = None
 _calibration_service: CalibrationService | None = None
 _enrichment_service: EnrichmentService | None = None
+_reid_service: ReIdService | None = None
 
 
 def configure_services(
@@ -19,13 +21,15 @@ def configure_services(
     overview_service: OverviewService,
     calibration_service: CalibrationService,
     enrichment_service: EnrichmentService,
+    reid_service: ReIdService,
 ) -> None:
-    global _dataset_service, _session_service, _overview_service, _calibration_service, _enrichment_service
+    global _dataset_service, _session_service, _overview_service, _calibration_service, _enrichment_service, _reid_service
     _dataset_service = dataset_service
     _session_service = session_service
     _overview_service = overview_service
     _calibration_service = calibration_service
     _enrichment_service = enrichment_service
+    _reid_service = reid_service
 
 
 def get_dataset_discovery_service() -> DatasetDiscoveryService:
@@ -51,3 +55,8 @@ def get_calibration_service() -> CalibrationService:
 def get_enrichment_service() -> EnrichmentService:
     assert _enrichment_service is not None
     return _enrichment_service
+
+
+def get_reid_service() -> ReIdService:
+    assert _reid_service is not None
+    return _reid_service

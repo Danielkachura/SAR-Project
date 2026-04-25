@@ -1,22 +1,24 @@
-# MOD-012 Artifact Management (Phase 0-1)
+# MOD-012 Artifact Management
 
 ## Purpose
 Centralize artifact classification and official artifact recognition logic.
 
 ## Current contract
-- Recognizes official artifacts by suffix:
+- Official artifacts:
   - `*_ENRICHED.csv`
   - `*_REID.csv`
-- Classifies file types into canonical artifact kinds:
+- Classification kinds:
   - raw CSV
   - PCAP / PCAPNG
   - ENRICHED CSV
   - REID CSV
-- Supports activation flow through MOD-001 state transitions.
+- Activation flow:
+  - ENRICHED activation -> `active_enriched_artifact_id`, stage `reid_enrichment`
+  - REID activation -> `active_reid_artifact_id`, stage `localization`
 
-## Current known TODOs
-- TODO: implement naming/writing/overwrite/export operations for later phases.
-- TODO: include validation and lifecycle policy checks for generated artifacts.
+## Generation behavior currently implemented
+- Enrichment writes `{csv_stem}_ENRICHED.csv`, silent overwrite, then activates artifact.
+- Re-ID writes `{enriched_stem}_REID.csv`, silent overwrite, then activates artifact.
 
 ## Last updated
-- 2026-04-16: Added phase-1 classification and official artifact detection helpers.
+- 2026-04-25: Added explicit REID generation and activation behavior notes.
