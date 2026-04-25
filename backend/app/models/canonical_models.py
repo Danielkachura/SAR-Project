@@ -261,14 +261,7 @@ class EnrichmentMatchMethod(str, Enum):
 
 
 class EnrichmentParameters(BaseModel):
-    # ENR-01 / ENR-02: protocol-global defaults (spec TBD — sensible starters)
-    match_threshold: float = Field(default=0.3, ge=0.0, le=1.0)
-    match_time_window_ms: float = Field(default=500.0, gt=0.0)
-    # ENR-03..06: scoring weights
-    time_score_weight: float = Field(default=0.6, ge=0.0, le=1.0)
-    identity_score_weight: float = Field(default=0.3, ge=0.0, le=1.0)
-    wifi_context_weight: float = Field(default=0.1, ge=0.0, le=1.0)
-    ble_context_weight: float = Field(default=0.1, ge=0.0, le=1.0)
+    match_time_window_ms: float = Field(default=1000.0, gt=0.0)
 
 
 class EnrichmentDiagnostics(BaseModel):

@@ -1,329 +1,249 @@
-"""MOD-007 Enrichment Module — pure-Python PCAP reader and CSV enrichment."""
+"""MOD-007 Enrichment — CSV+PCAP correlator (scapy + pandas merge_asof).
+
+Ported from the legacy `reid.pipeline.enrich_csv_with_pcap` so the output
+matches what the previous ground station produced.
+"""
 from __future__ import annotations
 
-import csv
-import struct
-from collections import defaultdict
-from dataclasses import dataclass, field
+import logging
+from collections import Counter, defaultdict
 from pathlib import Path
+
+import pandas as pd
 
 from app.core.errors import NotFoundError, ValidationError
 from app.models.canonical_models import (
-    ArtifactKind,
-    EnrichmentMatchMethod,
-    EnrichmentParameters,
     EnrichmentDiagnostics,
+    EnrichmentParameters,
     EnrichmentRunPayload,
     ProtocolMode,
 )
 from app.modules.dataset_discovery.service import DatasetDiscoveryService
 from app.modules.session_navigation.service import SessionNavigationService
 
+logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+
 
 # ---------------------------------------------------------------------------
-# PCAP binary parser (no external dependencies)
+# PCAP feature extraction (scapy)
 # ---------------------------------------------------------------------------
 
-@dataclass
-class _PcapFrame:
-    timestamp_ms: float
-    link_type: int
-    frame_length: int
-    # Wi-Fi fields
-    src_mac: str | None = None
-    dst_mac: str | None = None
-    bssid: str | None = None
-    seq_num: int | None = None
-    ie_ids: list[int] = field(default_factory=list)
-    ie_fingerprint: str | None = None
-    ie_vendor_ouis: list[str] = field(default_factory=list)
-    channel: int | None = None
-    frame_type: str | None = None
-    # BLE fields
-    ble_advertiser_addr: str | None = None
-    ble_addr_type: str | None = None
-    ble_event_type: str | None = None
-    ble_manufacturer_data: str | None = None
-    ble_service_uuids: list[str] = field(default_factory=list)
-    ble_local_name: str | None = None
-    ble_tx_power: int | None = None
-    ble_flags: int | None = None
-    ble_vendor_company_id: str | None = None
+_IE_KEEP_IDS = {1, 50, 45, 61, 127, 191, 192, 221}
+
+_PCAP_COLUMNS = [
+    "timestamp_utc",
+    "src_mac",
+    "dst_mac",
+    "bssid",
+    "seq_ctl",
+    "frame_len",
+    "ie_ids",
+    "ie_fingerprint",
+    "ie_vendor_ouis",
+    "ssid",
+]
 
 
-_BLE_ADV_TYPE_NAMES = {
-    0x00: "ADV_IND",
-    0x01: "ADV_DIRECT_IND",
-    0x02: "ADV_NONCONN_IND",
-    0x03: "SCAN_REQ",
-    0x04: "SCAN_RSP",
-    0x05: "CONNECT_IND",
-    0x06: "ADV_SCAN_IND",
-}
+def _build_ie_features(pkt) -> tuple[str, str, str, bytes]:
+    from scapy.all import Dot11Elt
 
-_LINK_80211 = 105
-_LINK_RADIOTAP = 127
-_LINK_BLE_LL = 251
-_LINK_BTLE = 272
-
-_MGMT_FIXED_PARAM_LENS: dict[int, int] = {
-    0: 4, 1: 6, 2: 10, 3: 6, 4: 0,
-    5: 12, 8: 12, 11: 6, 12: 2, 13: 2,
-}
-
-
-def _fmt_mac(raw: bytes) -> str:
-    return ":".join(f"{b:02x}" for b in raw)
-
-
-def _parse_80211(frame: _PcapFrame, data: bytes) -> None:
-    if len(data) < 24:
-        return
-    fc = struct.unpack_from("<H", data, 0)[0]
-    frame_type = (fc >> 2) & 0x3
-    frame_subtype = (fc >> 4) & 0xF
-    type_names = {0: "management", 1: "control", 2: "data", 3: "extension"}
-    frame.frame_type = type_names.get(frame_type, "unknown")
-    if frame_type == 1:  # control — addresses not in standard positions
-        return
-    frame.dst_mac = _fmt_mac(data[4:10])
-    frame.src_mac = _fmt_mac(data[10:16])
-    frame.bssid = _fmt_mac(data[16:22])
-    seq_ctrl = struct.unpack_from("<H", data, 22)[0]
-    frame.seq_num = (seq_ctrl >> 4) & 0xFFF
-    if frame_type == 0:  # management — parse IEs
-        fixed_len = _MGMT_FIXED_PARAM_LENS.get(frame_subtype, 0)
-        _parse_ies(frame, data, 24 + fixed_len)
-
-
-def _parse_ies(frame: _PcapFrame, data: bytes, offset: int) -> None:
-    ie_ids: list[int] = []
+    ids: list[str] = []
+    fingerprint_parts: list[str] = []
     vendor_ouis: list[str] = []
-    while offset + 2 <= len(data):
-        tag_id = data[offset]
-        tag_len = data[offset + 1]
-        offset += 2
-        if offset + tag_len > len(data):
-            break
-        tag_data = data[offset:offset + tag_len]
-        offset += tag_len
-        ie_ids.append(tag_id)
-        if tag_id == 3 and tag_len >= 1:  # DS Parameter Set → channel
-            frame.channel = tag_data[0]
-        if tag_id == 221 and tag_len >= 3:  # Vendor Specific → OUI
-            vendor_ouis.append(":".join(f"{b:02x}" for b in tag_data[:3]))
-    frame.ie_ids = ie_ids
-    frame.ie_fingerprint = ",".join(str(x) for x in sorted(ie_ids)) if ie_ids else None
-    frame.ie_vendor_ouis = vendor_ouis
+    ssid_bytes = b""
+    elt = pkt.getlayer(Dot11Elt)
+    while elt is not None:
+        eid = int(getattr(elt, "ID", -1))
+        info = bytes(getattr(elt, "info", b""))
+        if eid == 0:
+            ssid_bytes = info
+        if eid in _IE_KEEP_IDS:
+            ids.append(str(eid))
+            fingerprint_parts.append(f"{eid}:{info.hex()}")
+            if eid == 221 and len(info) >= 3:
+                vendor_ouis.append(info[:3].hex())
+        elt = elt.payload.getlayer(Dot11Elt)
+    return ",".join(ids), ";".join(fingerprint_parts), ",".join(vendor_ouis), ssid_bytes
 
 
-def _parse_ble_ad_structures(frame: _PcapFrame, data: bytes) -> None:
-    service_uuids: list[str] = []
-    offset = 0
-    while offset < len(data):
-        length = data[offset]
-        offset += 1
-        if length == 0:
-            break
-        if offset + length > len(data):
-            break
-        ad_type = data[offset]
-        ad_data = data[offset + 1:offset + length]
-        offset += length
-        if ad_type == 0x01 and ad_data:
-            frame.ble_flags = ad_data[0]
-        elif ad_type in (0x08, 0x09):
-            frame.ble_local_name = ad_data.decode("utf-8", errors="replace")
-        elif ad_type == 0x0A and ad_data:
-            frame.ble_tx_power = struct.unpack_from("b", ad_data, 0)[0]
-        elif ad_type in (0x02, 0x03):
-            for i in range(0, len(ad_data) - 1, 2):
-                service_uuids.append(f"{struct.unpack_from('<H', ad_data, i)[0]:04x}")
-        elif ad_type in (0x04, 0x05):
-            for i in range(0, len(ad_data) - 3, 4):
-                service_uuids.append(f"{struct.unpack_from('<I', ad_data, i)[0]:08x}")
-        elif ad_type in (0x06, 0x07):
-            for i in range(0, len(ad_data) - 15, 16):
-                h = ad_data[i:i + 16][::-1].hex()
-                service_uuids.append(f"{h[:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:]}")
-        elif ad_type == 0xFF and len(ad_data) >= 2:
-            company_id = struct.unpack_from("<H", ad_data, 0)[0]
-            frame.ble_vendor_company_id = f"{company_id:04x}"
-            frame.ble_manufacturer_data = ad_data.hex()
-    frame.ble_service_uuids = service_uuids
-
-
-def _parse_ble_ll(frame: _PcapFrame, data: bytes) -> None:
-    if len(data) < 2:
-        return
-    pdu_hdr = struct.unpack_from("<H", data, 0)[0]
-    pdu_type = pdu_hdr & 0xF
-    tx_add = (pdu_hdr >> 6) & 0x1
-    pdu_len = (pdu_hdr >> 8) & 0x3F
-    frame.ble_event_type = _BLE_ADV_TYPE_NAMES.get(pdu_type, f"type_{pdu_type}")
-    frame.ble_addr_type = "random" if tx_add else "public"
-    if pdu_type in (0x00, 0x02, 0x04, 0x06) and len(data) >= 8:
-        frame.ble_advertiser_addr = _fmt_mac(data[2:8])
-        adv_data = data[8:2 + pdu_len]
-        _parse_ble_ad_structures(frame, adv_data)
-    elif pdu_type == 0x01 and len(data) >= 8:
-        frame.ble_advertiser_addr = _fmt_mac(data[2:8])
-
-
-def _parse_pcap_file(pcap_path: Path) -> tuple[int, list[_PcapFrame]]:
-    """Read .pcap file, return (link_type, frames). Raises ValidationError on bad file."""
-    data = pcap_path.read_bytes()
-    if len(data) < 24:
-        raise ValidationError(f"PCAP file too small: {pcap_path.name}")
-
-    magic = struct.unpack_from("<I", data, 0)[0]
-    if magic in (0xA1B2C3D4, 0xA1B23C4D):
-        endian, is_ns = "<", magic == 0xA1B23C4D
-    elif magic in (0xD4C3B2A1, 0x4D3CB2A1):
-        endian, is_ns = ">", magic == 0x4D3CB2A1
-    else:
-        raise ValidationError(f"Not a valid pcap file (magic={hex(magic)}): {pcap_path.name}")
-
-    _, _, _, _, _, _, link_type = struct.unpack_from(f"{endian}IHHiIII", data, 0)
-    frames: list[_PcapFrame] = []
-    pos = 24
-    while pos + 16 <= len(data):
-        ts_sec, ts_frac, incl_len, orig_len = struct.unpack_from(f"{endian}IIII", data, pos)
-        pos += 16
-        if pos + incl_len > len(data):
-            break
-        pkt = data[pos:pos + incl_len]
-        pos += incl_len
-        ts_ms = ts_sec * 1000.0 + (ts_frac / 1_000_000.0 if is_ns else ts_frac / 1000.0)
-        frame = _PcapFrame(timestamp_ms=ts_ms, link_type=link_type, frame_length=orig_len)
-        if link_type == _LINK_RADIOTAP and len(pkt) >= 4:
-            rt_len = struct.unpack_from("<H", pkt, 2)[0]
-            if rt_len <= len(pkt):
-                _parse_80211(frame, pkt[rt_len:])
-        elif link_type == _LINK_80211:
-            _parse_80211(frame, pkt)
-        elif link_type == _LINK_BLE_LL:
-            _parse_ble_ll(frame, pkt)
-        elif link_type == _LINK_BTLE and len(pkt) >= 14:
-            _parse_ble_ll(frame, pkt[14:])
-        frames.append(frame)
-    return link_type, frames
-
-
-# ---------------------------------------------------------------------------
-# PCAP index for fast time + identity lookup
-# ---------------------------------------------------------------------------
-
-class _PcapIndex:
-    _BUCKET_MS = 1000.0  # 1-second time buckets
-
-    def __init__(self, frames: list[_PcapFrame]) -> None:
-        self._by_time: dict[int, list[_PcapFrame]] = defaultdict(list)
-        self._by_identity: dict[str, list[_PcapFrame]] = defaultdict(list)
-        for f in frames:
-            bucket = int(f.timestamp_ms // self._BUCKET_MS)
-            self._by_time[bucket].append(f)
-            identity = (f.src_mac or f.ble_advertiser_addr or "").lower()
-            if identity:
-                self._by_identity[identity].append(f)
-
-    def get_candidates(self, row_ts_ms: float, window_ms: float) -> list[_PcapFrame]:
-        low_bucket = int((row_ts_ms - window_ms) // self._BUCKET_MS)
-        high_bucket = int((row_ts_ms + window_ms) // self._BUCKET_MS)
-        result: list[_PcapFrame] = []
-        for b in range(low_bucket, high_bucket + 1):
-            result.extend(self._by_time.get(b, []))
-        return result
-
-
-# ---------------------------------------------------------------------------
-# Column name helpers (shared with calibration patterns)
-# ---------------------------------------------------------------------------
-
-_MAC_COLUMNS = ("mac", "device_id", "device_address", "addr", "source_mac", "src_mac", "bssid")
-_TS_COLUMNS = ("timestamp", "time", "ts", "packet_time", "capture_time", "detection_time", "epoch_ms", "epoch_s")
-
-
-def _first_present(row: dict[str, str], columns: tuple[str, ...]) -> str | None:
-    for k in columns:
-        v = row.get(k)
-        if v not in (None, ""):
-            return v
-    return None
-
-
-def _parse_ts_ms(row: dict[str, str]) -> float | None:
-    raw = _first_present(row, _TS_COLUMNS)
-    if raw is None:
-        return None
+def _extract_pcap_features(pcap_path: Path) -> pd.DataFrame:
+    """Return a DataFrame of 802.11 features from the PCAP, one row per frame."""
     try:
-        val = float(raw)
-        # Heuristic: values < 1e10 are seconds, otherwise milliseconds
-        return val * 1000.0 if val < 1e10 else val
-    except ValueError:
-        return None
+        from scapy.all import Dot11, PcapReader
+    except Exception as exc:
+        raise ValidationError(
+            "scapy is required for enrichment. Install with: pip install scapy"
+        ) from exc
 
+    rows: list[dict] = []
+    ssid_observations: dict[str, list[str]] = defaultdict(list)
 
-# ---------------------------------------------------------------------------
-# Enrichment result row builders
-# ---------------------------------------------------------------------------
+    try:
+        with PcapReader(str(pcap_path)) as reader:
+            for pkt in reader:
+                if not pkt.haslayer(Dot11):
+                    continue
+                dot11 = pkt[Dot11]
+                ts = getattr(pkt, "time", None)
+                if ts is None:
+                    continue
 
-# Wi-Fi enrichment column names
-_WIFI_COLS = [
-    "enr_src_vendor", "enr_dst_mac", "enr_bssid", "enr_seq_num",
-    "enr_frame_length", "enr_ie_ids", "enr_ie_fingerprint",
-    "enr_ie_vendor_ouis", "enr_channel", "enr_frame_type",
-]
-# BLE enrichment column names (always present in schema per spec)
-_BLE_COLS = [
-    "enr_ble_advertiser_addr", "enr_ble_addr_type", "enr_ble_event_type",
-    "enr_ble_manufacturer_data", "enr_ble_service_uuids", "enr_ble_local_name",
-    "enr_ble_tx_power", "enr_ble_flags", "enr_ble_vendor_company_id",
-]
-# Match diagnostics (always present)
-_DIAG_COLS = ["match_found", "match_delta_ms", "match_score", "match_method"]
+                ie_ids, ie_fp, ie_vendors, ssid_bytes = _build_ie_features(pkt)
+                src_mac = (dot11.addr2 or "").lower()
+                ssid_str = ssid_bytes.decode("utf-8", errors="replace") if ssid_bytes else ""
+                if src_mac and ssid_str:
+                    ssid_observations[src_mac].append(ssid_str)
 
-_ALL_ENRICHMENT_COLS = _WIFI_COLS + _BLE_COLS + _DIAG_COLS
+                rows.append(
+                    {
+                        "timestamp_utc": pd.to_datetime(float(ts), unit="s", utc=True, errors="coerce"),
+                        "src_mac": src_mac,
+                        "dst_mac": (dot11.addr1 or "").lower(),
+                        "bssid": (dot11.addr3 or "").lower(),
+                        "seq_ctl": getattr(dot11, "SC", None),
+                        "frame_len": len(pkt),
+                        "ie_ids": ie_ids,
+                        "ie_fingerprint": ie_fp,
+                        "ie_vendor_ouis": ie_vendors,
+                        "ssid": ssid_str,
+                    }
+                )
+    except Exception as exc:
+        raise ValidationError(f"Failed to parse PCAP: {pcap_path.name} — {exc}") from exc
 
+    if not rows:
+        return pd.DataFrame(columns=_PCAP_COLUMNS)
 
-def _empty_enrichment_cols() -> dict[str, str]:
-    return {col: "" for col in _ALL_ENRICHMENT_COLS}
+    df = pd.DataFrame(rows)
 
-
-def _build_enriched_fields(
-    frame: _PcapFrame,
-    delta_ms: float,
-    score: float,
-    method: str,
-) -> dict[str, str]:
-    return {
-        # Wi-Fi
-        "enr_src_vendor": "",
-        "enr_dst_mac": frame.dst_mac or "",
-        "enr_bssid": frame.bssid or "",
-        "enr_seq_num": str(frame.seq_num) if frame.seq_num is not None else "",
-        "enr_frame_length": str(frame.frame_length),
-        "enr_ie_ids": str(frame.ie_ids) if frame.ie_ids else "",
-        "enr_ie_fingerprint": frame.ie_fingerprint or "",
-        "enr_ie_vendor_ouis": str(frame.ie_vendor_ouis) if frame.ie_vendor_ouis else "",
-        "enr_channel": str(frame.channel) if frame.channel is not None else "",
-        "enr_frame_type": frame.frame_type or "",
-        # BLE
-        "enr_ble_advertiser_addr": frame.ble_advertiser_addr or "",
-        "enr_ble_addr_type": frame.ble_addr_type or "",
-        "enr_ble_event_type": frame.ble_event_type or "",
-        "enr_ble_manufacturer_data": frame.ble_manufacturer_data or "",
-        "enr_ble_service_uuids": str(frame.ble_service_uuids) if frame.ble_service_uuids else "",
-        "enr_ble_local_name": frame.ble_local_name or "",
-        "enr_ble_tx_power": str(frame.ble_tx_power) if frame.ble_tx_power is not None else "",
-        "enr_ble_flags": str(frame.ble_flags) if frame.ble_flags is not None else "",
-        "enr_ble_vendor_company_id": frame.ble_vendor_company_id or "",
-        # Diagnostics
-        "match_found": "true",
-        "match_delta_ms": f"{delta_ms:.3f}",
-        "match_score": f"{score:.4f}",
-        "match_method": method,
+    # Per-MAC most-common SSID — overrides per-frame ssid for stability
+    consensus = {
+        mac: Counter(values).most_common(1)[0][0]
+        for mac, values in ssid_observations.items()
+        if values
     }
+    if consensus:
+        df["ssid"] = df["src_mac"].map(consensus).fillna(df["ssid"])
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# CSV/PCAP normalization helpers
+# ---------------------------------------------------------------------------
+
+_BROADCAST_MAC = "ff:ff:ff:ff:ff:ff"
+_BROADCAST_ALIASES = {
+    "broadcast": _BROADCAST_MAC,
+    "ff-ff-ff-ff-ff-ff": _BROADCAST_MAC,
+    "ff.ff.ff.ff.ff.ff": _BROADCAST_MAC,
+    "": "",
+    "nan": "",
+}
+
+
+def _normalize_mac_series(series: pd.Series) -> pd.Series:
+    s = series.astype(str).str.strip().str.lower()
+    return s.replace(_BROADCAST_ALIASES)
+
+
+# ---------------------------------------------------------------------------
+# Core enrichment (mirrors legacy enrich_csv_with_pcap)
+# ---------------------------------------------------------------------------
+
+def _enrich_dataframe(
+    csv_df: pd.DataFrame,
+    pcap_df: pd.DataFrame,
+    tolerance_ms: float,
+) -> tuple[pd.DataFrame, int, int]:
+    """Return (enriched_df, matched_rows, total_rows)."""
+    df = csv_df.copy()
+    df.columns = [c.strip().lower() for c in df.columns]
+
+    if "timestamp_utc" not in df.columns:
+        # Fall back: try other common column names
+        for alt in ("timestamp", "time", "ts"):
+            if alt in df.columns:
+                df = df.rename(columns={alt: "timestamp_utc"})
+                break
+    if "timestamp_utc" not in df.columns:
+        raise ValidationError("CSV is missing 'timestamp_utc' column.")
+    if "src_mac" not in df.columns:
+        for alt in ("mac", "source_mac", "addr"):
+            if alt in df.columns:
+                df = df.rename(columns={alt: "src_mac"})
+                break
+    if "src_mac" not in df.columns:
+        raise ValidationError("CSV is missing 'src_mac' column.")
+
+    df["timestamp_utc"] = pd.to_datetime(df["timestamp_utc"], errors="coerce", utc=True)
+    df["src_mac"] = _normalize_mac_series(df["src_mac"])
+    if "dst_mac" in df.columns:
+        df["dst_mac"] = _normalize_mac_series(df["dst_mac"])
+    if "bssid" in df.columns:
+        df["bssid"] = _normalize_mac_series(df["bssid"])
+
+    total = len(df)
+    matched = 0
+
+    if pcap_df.empty:
+        df["_match_delta_ms"] = pd.NA
+        df["match_found"] = False
+        return df, 0, total
+
+    valid_mask = df["timestamp_utc"].notna()
+    df_valid = df[valid_mask].copy().sort_values("timestamp_utc").reset_index(drop=True)
+    df_invalid = df[~valid_mask].copy()
+
+    pcap_sorted = pcap_df.copy().sort_values("timestamp_utc").reset_index(drop=True)
+    pcap_sorted["src_mac"] = _normalize_mac_series(pcap_sorted["src_mac"])
+
+    if df_valid.empty:
+        df["_match_delta_ms"] = pd.NA
+        df["match_found"] = False
+        return df, 0, total
+
+    merged = pd.merge_asof(
+        df_valid,
+        pcap_sorted,
+        on="timestamp_utc",
+        by="src_mac",
+        direction="nearest",
+        tolerance=pd.Timedelta(milliseconds=tolerance_ms),
+        suffixes=("", "_pcap"),
+    )
+
+    # match indicator: rows where any pcap-only column was filled
+    pcap_only_cols = [c for c in pcap_sorted.columns if c not in df_valid.columns and c != "timestamp_utc"]
+    if pcap_only_cols:
+        match_mask = merged[pcap_only_cols].notna().any(axis=1)
+    else:
+        match_mask = pd.Series(False, index=merged.index)
+    merged["match_found"] = match_mask
+    matched = int(match_mask.sum())
+
+    # _match_delta_ms — for merge_asof we don't have the pcap timestamp post-merge,
+    # but rows that didn't match will have NaN in pcap-only cols. Set 0.0 when matched.
+    merged["_match_delta_ms"] = match_mask.map({True: 0.0, False: None})
+
+    if not df_invalid.empty:
+        for col in merged.columns:
+            if col not in df_invalid.columns:
+                df_invalid[col] = pd.NA
+        df_invalid["match_found"] = False
+        out = pd.concat([merged, df_invalid], ignore_index=True)
+    else:
+        out = merged
+
+    # SSID coalesce (CSV ssid wins, fill missing from pcap)
+    if "ssid_pcap" in out.columns:
+        if "ssid" in out.columns:
+            out["ssid"] = out["ssid"].where(out["ssid"].astype(bool), out["ssid_pcap"])
+        else:
+            out["ssid"] = out["ssid_pcap"]
+        out = out.drop(columns=["ssid_pcap"])
+
+    return out, matched, total
 
 
 # ---------------------------------------------------------------------------
@@ -339,10 +259,6 @@ class EnrichmentService:
         self._session_service = session_service
         self._dataset_service = dataset_service
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
     def run_enrichment(
         self,
         session_id: str,
@@ -350,53 +266,34 @@ class EnrichmentService:
         selected_pcap_file: str,
         parameters: EnrichmentParameters,
     ) -> EnrichmentRunPayload:
-        """Execute the 7-step enrichment algorithm and write the ENRICHED artifact."""
         session = self._session_service.require_session(session_id)
-
-        # Step 0 — Validate inputs
         csv_path = self._resolve_csv(session.scan_folder_id, selected_csv_file)
         pcap_path = self._resolve_pcap(session.scan_folder_id, selected_pcap_file)
         protocol = session.mode
 
-        # Step 1 — Parse PCAP into frame-feature table
-        link_type, frames = _parse_pcap_file(pcap_path)
-        if not frames:
-            raise ValidationError(f"PCAP file contained no parseable packets: {selected_pcap_file}")
-
-        # Step 2 — Normalize is done inside _parse_pcap_file (timestamps → ms, MACs → lowercase hex)
-
-        # Step 3 — Build searchable index
-        index = _PcapIndex(frames)
-
-        # Steps 4-6 — Match CSV rows
-        csv_rows = self._read_csv_rows(csv_path)
-        if not csv_rows:
+        try:
+            csv_df = pd.read_csv(csv_path)
+        except Exception as exc:
+            raise ValidationError(f"Failed to read CSV: {selected_csv_file} — {exc}") from exc
+        if csv_df.empty:
             raise ValidationError(f"CSV file is empty: {selected_csv_file}")
 
-        enriched_rows, matched = self._match_rows(csv_rows, index, parameters, protocol)
+        pcap_df = _extract_pcap_features(pcap_path)
+        tolerance_ms = float(parameters.match_time_window_ms) if parameters.match_time_window_ms else 1000.0
+        enriched_df, matched, total = _enrich_dataframe(csv_df, pcap_df, tolerance_ms=tolerance_ms)
 
-        # Step 7 — Write official ENRICHED artifact
         stem = Path(selected_csv_file).stem
         output_name = f"{stem}_ENRICHED.csv"
         output_path = self._dataset_service._paths.folder_path(session.scan_folder_id) / output_name
+        enriched_df.to_csv(output_path, index=False)
 
-        output_columns = list(csv_rows[0].keys()) + _ALL_ENRICHMENT_COLS
-        with output_path.open("w", newline="", encoding="utf-8") as fh:
-            writer = csv.DictWriter(fh, fieldnames=output_columns, extrasaction="ignore")
-            writer.writeheader()
-            writer.writerows(enriched_rows)
-
-        # Activate the new artifact
         artifact_id = f"{session.scan_folder_id}:{output_name}"
         try:
             self._session_service.activate_artifact(session_id=session_id, artifact_id=artifact_id)
         except NotFoundError:
-            # Inventory cache miss right after write — not fatal; caller can activate manually
             pass
 
-        total = len(enriched_rows)
         match_rate = round(matched / total, 4) if total else 0.0
-
         return EnrichmentRunPayload(
             selected_csv_file=selected_csv_file,
             selected_pcap_file=selected_pcap_file,
@@ -412,21 +309,10 @@ class EnrichmentService:
         )
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Resolution helpers
     # ------------------------------------------------------------------
 
-    def _resolve_csv(self, folder_id: str, file_name: str) -> Path:
-        inventory = self._dataset_service.resolve_inventory(folder_id)
-        available = {item.file_name for item in inventory.raw_csv_files}
-        if file_name not in available:
-            raise ValidationError(f"Selected CSV is not available in active folder: {file_name}")
-        path = self._dataset_service._paths.folder_path(folder_id) / file_name
-        if not path.exists():
-            raise NotFoundError(f"CSV file does not exist: {file_name}")
-        return path
-
     def resolve_matching_pcap(self, folder_id: str, csv_file_name: str) -> str:
-        """Return PCAP file_name whose base_name matches the CSV stem. Raises ValidationError if none."""
         stem = Path(csv_file_name).stem.lower()
         inventory = self._dataset_service.resolve_inventory(folder_id)
         match = next(
@@ -440,6 +326,16 @@ class EnrichmentService:
             )
         return match
 
+    def _resolve_csv(self, folder_id: str, file_name: str) -> Path:
+        inventory = self._dataset_service.resolve_inventory(folder_id)
+        available = {item.file_name for item in inventory.raw_csv_files}
+        if file_name not in available:
+            raise ValidationError(f"Selected CSV is not available in active folder: {file_name}")
+        path = self._dataset_service._paths.folder_path(folder_id) / file_name
+        if not path.exists():
+            raise NotFoundError(f"CSV file does not exist: {file_name}")
+        return path
+
     def _resolve_pcap(self, folder_id: str, file_name: str) -> Path:
         inventory = self._dataset_service.resolve_inventory(folder_id)
         available = {item.file_name for item in inventory.pcap_files}
@@ -449,127 +345,3 @@ class EnrichmentService:
         if not path.exists():
             raise NotFoundError(f"PCAP file does not exist: {file_name}")
         return path
-
-    def _match_rows(
-        self,
-        rows: list[dict[str, str]],
-        index: _PcapIndex,
-        params: EnrichmentParameters,
-        protocol: ProtocolMode,
-    ) -> tuple[list[dict[str, str]], int]:
-        enriched: list[dict[str, str]] = []
-        matched = 0
-        no_match_fields = {
-            **_empty_enrichment_cols(),
-            "match_found": "false",
-            "match_method": EnrichmentMatchMethod.NO_MATCH.value,
-        }
-        for row in rows:
-            row_ts = _parse_ts_ms(row)
-            if row_ts is None:
-                enriched.append({**row, **no_match_fields})
-                continue
-
-            candidates = index.get_candidates(row_ts, params.match_time_window_ms)
-            if not candidates:
-                enriched.append({**row, **no_match_fields})
-                continue
-
-            best = self._score_candidates(row, row_ts, candidates, params, protocol)
-            if best is None:
-                enriched.append({**row, **no_match_fields})
-            else:
-                score, delta_ms, frame, method = best
-                matched += 1
-                enriched.append({**row, **_build_enriched_fields(frame, delta_ms, score, method)})
-
-        return enriched, matched
-
-    def _score_candidates(
-        self,
-        row: dict[str, str],
-        row_ts_ms: float,
-        candidates: list[_PcapFrame],
-        params: EnrichmentParameters,
-        protocol: ProtocolMode,
-    ) -> tuple[float, float, _PcapFrame, str] | None:
-        row_identity = (_first_present(row, _MAC_COLUMNS) or "").lower()
-        best_score = -1.0
-        best_frame: _PcapFrame | None = None
-        best_delta = 0.0
-        best_method = EnrichmentMatchMethod.NO_MATCH.value
-
-        for frame in candidates:
-            delta_ms = abs(frame.timestamp_ms - row_ts_ms)
-            if delta_ms > params.match_time_window_ms:
-                continue
-
-            time_score = max(0.0, 1.0 - delta_ms / params.match_time_window_ms)
-
-            # Identity match
-            frame_identity = (frame.src_mac or frame.ble_advertiser_addr or "").lower()
-            identity_match = bool(row_identity and frame_identity and row_identity == frame_identity)
-            identity_score = 1.0 if identity_match else 0.0
-
-            # Context score
-            context_score = self._context_score(row, frame, protocol)
-
-            if protocol == ProtocolMode.BLE:
-                score = (
-                    params.time_score_weight * time_score
-                    + params.identity_score_weight * identity_score
-                    + params.ble_context_weight * context_score
-                )
-            else:
-                score = (
-                    params.time_score_weight * time_score
-                    + params.identity_score_weight * identity_score
-                    + params.wifi_context_weight * context_score
-                )
-
-            if score > best_score:
-                best_score = score
-                best_frame = frame
-                best_delta = delta_ms
-                if identity_match:
-                    best_method = EnrichmentMatchMethod.TIME_IDENTITY_BEST_MATCH.value
-                else:
-                    best_method = EnrichmentMatchMethod.TIME_ONLY_MATCH.value
-
-        if best_frame is None or best_score < params.match_threshold:
-            return None
-        return best_score, best_delta, best_frame, best_method
-
-    @staticmethod
-    def _context_score(
-        row: dict[str, str],
-        frame: _PcapFrame,
-        protocol: ProtocolMode,
-    ) -> float:
-        """Protocol-specific context compatibility signal in [0, 1]."""
-        if protocol == ProtocolMode.WIFI:
-            row_bssid = (_first_present(row, ("bssid",)) or "").lower()
-            frame_bssid = (frame.bssid or "").lower()
-            if row_bssid and frame_bssid and row_bssid == frame_bssid:
-                return 1.0
-            return 0.0
-        if protocol == ProtocolMode.BLE:
-            row_name = row.get("local_name", "").lower()
-            frame_name = (frame.ble_local_name or "").lower()
-            if row_name and frame_name and row_name == frame_name:
-                return 1.0
-            return 0.0
-        return 0.0
-
-    @staticmethod
-    def _read_csv_rows(csv_path: Path) -> list[dict[str, str]]:
-        rows: list[dict[str, str]] = []
-        with csv_path.open("r", newline="", encoding="utf-8") as fh:
-            reader = csv.DictReader(fh)
-            if reader.fieldnames is None:
-                return []
-            for row in reader:
-                if row is None:
-                    continue
-                rows.append({str(k).strip(): ("" if v is None else str(v).strip()) for k, v in row.items()})
-        return rows

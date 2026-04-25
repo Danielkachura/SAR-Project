@@ -30,12 +30,11 @@ class DatasetDiscoveryService:
         return folders
 
     def detect_mode_from_folder_name(self, folder_name: str) -> ProtocolMode:
-        name = folder_name.lower()
-        if "wifi" in name or "wi-fi" in name:
+        name = folder_name.lower().lstrip()
+        if name.startswith("scan") or "wifi" in name or "wi-fi" in name:
             return ProtocolMode.WIFI
         if "ble" in name:
             return ProtocolMode.BLE
-        # TODO(spec): define exhaustive mode detection rules when naming convention is finalized.
         return ProtocolMode.UNKNOWN
 
     def resolve_inventory(self, folder_id: str) -> FolderInventory:
