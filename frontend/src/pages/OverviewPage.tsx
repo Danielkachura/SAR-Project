@@ -12,9 +12,10 @@ interface Props {
   session: SessionState;
   onSessionUpdate: (session: SessionState) => void;
   onOpenCalibration: () => void;
+  onOpenEnrichment: () => void;
 }
 
-export function OverviewPage({ session, onSessionUpdate, onOpenCalibration }: Props) {
+export function OverviewPage({ session, onSessionUpdate, onOpenCalibration, onOpenEnrichment }: Props) {
   const [selectedCsv, setSelectedCsv] = useState<string>(session.selected_overview_csv_file ?? "");
   const [overview, setOverview] = useState<OverviewPayload | null>(null);
   const [error, setError] = useState<string>("");
@@ -39,6 +40,7 @@ export function OverviewPage({ session, onSessionUpdate, onOpenCalibration }: Pr
       <p>Active folder: {session.scan_folder_name}</p>
       <p>Mode: {session.mode}</p>
       <button onClick={onOpenCalibration}>Open Calibration</button>
+      <button onClick={onOpenEnrichment} style={{ marginLeft: 8 }}>Open Enrichment</button>
 
       <label>
         Select CSV
