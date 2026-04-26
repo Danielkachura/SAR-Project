@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import threading
 import traceback
 import uuid
@@ -9,6 +10,8 @@ from typing import Any
 
 from app.core.errors import NotFoundError
 from app.models.canonical_models import ExecutionRecord, ExecutionStatus
+
+logger = logging.getLogger(__name__)
 
 
 class ExecutionService:
@@ -53,6 +56,7 @@ class ExecutionService:
                 warnings=warnings,
             )
         except Exception as exc:  # noqa: BLE001
+            logger.exception("Execution %s failed at stage %s", execution_id, self.get(execution_id).stage)
             self._update(
                 execution_id,
                 status=ExecutionStatus.FAILED,
