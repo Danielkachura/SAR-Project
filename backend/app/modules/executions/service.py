@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import threading
+import traceback
 import uuid
 from collections.abc import Callable
 from datetime import datetime, timezone
@@ -52,7 +53,12 @@ class ExecutionService:
                 warnings=warnings,
             )
         except Exception as exc:  # noqa: BLE001
-            self._update(execution_id, status=ExecutionStatus.FAILED, error_message=str(exc))
+            self._update(
+                execution_id,
+                status=ExecutionStatus.FAILED,
+                error_message=str(exc),
+                result_metadata={"traceback": traceback.format_exc()},
+            )
 
     def get(self, execution_id: str) -> ExecutionRecord:
         with self._lock:

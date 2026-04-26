@@ -22,23 +22,27 @@ from app.storage.data_paths import DataPathResolver
 from app.storage.session_store import InMemorySessionStore
 
 
-def test_localization_service_supports_reid_rssi_dbm_fixture() -> None:
+def _build_localization_service():
     repo_root = Path(__file__).resolve().parents[2]
     data_root = repo_root / "Refrences" / "legacy" / "ground_station" / "data"
-    folder_id = "scan - field test 1 - 19.1"
-    reid_file = "scan_2026-01-19_11-20-58Z-test-circle2_reid.csv"
-    reid_path = data_root / folder_id / reid_file
-
-    df = pd.read_csv(reid_path)
-    for required in ("rssi_dbm", "gps_lat", "gps_lon", "cluster_id"):
-        assert required in df.columns
-
     config = AppConfig(repo_root=repo_root, runtime_root=repo_root, data_dir=data_root)
     resolver = DataPathResolver(config=config)
     dataset = DatasetDiscoveryService(path_resolver=resolver)
     sessions = SessionNavigationService(dataset_service=dataset, session_store=InMemorySessionStore())
     spatial = SpatialPresentationService()
     localization = LocalizationService(session_service=sessions, dataset_service=dataset, spatial_service=spatial)
+    return data_root, sessions, localization
+
+
+def _prepare_field_test_session():
+    folder_id = "scan - field test 1 - 19.1"
+    reid_file = "scan_2026-01-19_11-20-58Z-test-circle2_reid.csv"
+    data_root, sessions, localization = _build_localization_service()
+    reid_path = data_root / folder_id / reid_file
+
+    df = pd.read_csv(reid_path)
+    for required in ("rssi_dbm", "gps_lat", "gps_lon", "cluster_id"):
+        assert required in df.columns
 
     session = sessions.create_session(folder_id)
     sessions.activate_artifact(session.session_id, f"{folder_id}:{reid_file}")
@@ -56,9 +60,14 @@ def test_localization_service_supports_reid_rssi_dbm_fixture() -> None:
             gt_mode=CalibrationGtMode.FIRST_SAMPLE,
         ),
     )
+    return session.session_id, folder_id, reid_file, localization
+
+
+def test_localization_service_supports_reid_rssi_dbm_fixture() -> None:
+    session_id, folder_id, reid_file, localization = _prepare_field_test_session()
 
     result = localization.run_localization(
-        session_id=session.session_id,
+        session_id=session_id,
         selected_reid_artifact_id=f"{folder_id}:{reid_file}",
         parameters=LocalizationParameters(
             grid_resolution_m=5,
@@ -67,6 +76,29 @@ def test_localization_service_supports_reid_rssi_dbm_fixture() -> None:
             uncertainty_target_mass_q=0.68,
             min_samples_per_cluster=3,
         ),
+        pre_filters=LocalizationPreFilters(),
+    )
+
+    assert isinstance(result, LocalizationRunPayload)
+    succeeded = [item for item in result.cluster_results if item.status == "succeeded"]
+    failed = [item for item in result.cluster_results if item.status == "failed"]
+
+    assert len(succeeded) >= 1
+    assert len(failed) >= 1
+
+    for item in succeeded:
+        assert item.primary_peak_latitude is not None
+        assert item.primary_peak_longitude is not None
+        assert 1 <= len(item.uncertainty_regions) <= 3
+
+
+def test_localization_service_default_parameters_succeeds_with_fixture() -> None:
+    session_id, folder_id, reid_file, localization = _prepare_field_test_session()
+
+    result = localization.run_localization(
+        session_id=session_id,
+        selected_reid_artifact_id=f"{folder_id}:{reid_file}",
+        parameters=LocalizationParameters(),
         pre_filters=LocalizationPreFilters(),
     )
 

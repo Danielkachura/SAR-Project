@@ -145,6 +145,13 @@ class LocalizationService:
             estimates.append((lat + distance / 111_111.0, lon + distance / 111_111.0, score))
 
         total_score = sum(item[2] for item in estimates)
+        if total_score <= 0.0 or not math.isfinite(total_score):
+            return LocalizationClusterResult(
+                cluster_id=cluster_id,
+                sample_count=int(len(usable)),
+                status="failed",
+                warnings=["Cluster produced invalid aggregate score; cannot compute weighted peak."],
+            )
         peak_lat = sum(item[0] * item[2] for item in estimates) / total_score
         peak_lon = sum(item[1] * item[2] for item in estimates) / total_score
 

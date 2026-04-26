@@ -41,6 +41,9 @@ Each successful cluster returns:
 
 Failed clusters return failed status and warnings.
 
+Numerical stability:
+- Clusters that produce a non-finite or zero aggregate score are marked failed with warning instead of raising.
+
 ## Boundaries
 
 - Localization computes result objects only
