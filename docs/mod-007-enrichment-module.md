@@ -8,8 +8,10 @@ match diagnostics to each CSV row.
 
 ## Implementation notes (current)
 
-Current implementation uses Scapy packet parsing with deterministic per-row candidate
-scoring. It supports Wi-Fi feature extraction and best-effort BLE metadata extraction.
+Current implementation uses Scapy packet parsing for feature extraction. Wi-Fi row/frame
+correlation uses a vectorized `pandas.merge_asof` flow (`by=src_mac`, nearest timestamp
+within tolerance) with broadcast/unicast partitioning by frame type. BLE still uses the
+existing row-wise matcher in this phase (best-effort extraction + current scoring path).
 
 ## Match diagnostics columns (always present)
 
@@ -32,6 +34,10 @@ scoring. It supports Wi-Fi feature extraction and best-effort BLE metadata extra
 - Selected PCAP basename must match selected CSV basename
 - Existing ENRICHED output is overwritten silently
 - Generated ENRICHED artifact is activated after write
+- Wi-Fi matching method labels remain canonical (`TIME_IDENTITY_BEST_MATCH` or `NO_MATCH`)
+  and continue to honor `match_threshold`
 
 ## Last updated
+- 2026-04-26: Replaced Wi-Fi matching inner loops with vectorized `merge_asof` partition
+  strategy for large-scan performance; preserved output contract and BLE path behavior.
 - 2026-04-25: Synced docs to implemented scoring parameters, diagnostics, and basename guard.

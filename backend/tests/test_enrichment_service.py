@@ -8,7 +8,7 @@ import pytest
 
 from app.core.errors import ValidationError
 from app.models.canonical_models import EnrichmentParameters, ProtocolMode
-from app.modules.enrichment.service import EnrichmentService
+from app.modules.enrichment.service import EnrichmentService, _enrich_dataframe, _extract_pcap_features
 
 
 def _write_wifi_pcap(path: Path, frames: list[tuple[float, str, str, str, str]]) -> None:
@@ -204,3 +204,27 @@ def test_resolve_matching_pcap_by_basename(enrichment_services, data_root: Path)
     assert enrichment.resolve_matching_pcap("mission_resolve", "scan.csv") == "scan.pcap"
     with pytest.raises(ValidationError, match="No matching PCAP"):
         enrichment.resolve_matching_pcap("mission_resolve", "ghost.csv")
+
+
+def test_wifi_merge_asof_match_rate_stays_within_regression_band() -> None:
+    fixture_dir = Path("Refrences/legacy/ground_station/data/scan - field test 1 - 19.1")
+    csv_path = fixture_dir / "scan_2026-01-19_11-20-58Z-test-circle2.csv"
+    pcap_path = fixture_dir / "scan_2026-01-19_11-20-58Z-test-circle2.pcap"
+    reference_path = fixture_dir / "scan_2026-01-19_11-20-58Z-test-circle2_enriched.csv"
+    if not (csv_path.exists() and pcap_path.exists() and reference_path.exists()):
+        pytest.skip("Regression fixture not available in repository clone.")
+
+    csv_df = pd.read_csv(csv_path)
+    reference_df = pd.read_csv(reference_path)
+    wifi_df, ble_df = _extract_pcap_features(pcap_path)
+    enriched_df, _, total = _enrich_dataframe(
+        csv_df=csv_df,
+        wifi_df=wifi_df,
+        ble_df=ble_df,
+        protocol=ProtocolMode.WIFI,
+        parameters=EnrichmentParameters(),
+    )
+
+    actual_rate = float(enriched_df["match_found"].fillna(False).astype(bool).mean()) if total else 0.0
+    reference_rate = float(reference_df["match_found"].fillna(False).astype(bool).mean()) if len(reference_df) else 0.0
+    assert actual_rate == pytest.approx(reference_rate, abs=0.02)

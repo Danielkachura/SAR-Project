@@ -211,6 +211,21 @@ def _normalize_mac_series(series: pd.Series) -> pd.Series:
     return s.replace(_BROADCAST_ALIASES)
 
 
+def _first_present_column(df: pd.DataFrame, candidates: tuple[str, ...]) -> pd.Series:
+    present = [col for col in candidates if col in df.columns]
+    if not present:
+        return pd.Series(pd.NA, index=df.index, dtype="object")
+    return df[present].bfill(axis=1).iloc[:, 0]
+
+
+def _build_timestamp_series(df: pd.DataFrame) -> pd.Series:
+    return pd.to_datetime(
+        _first_present_column(df, ("timestamp_utc", "timestamp", "time", "ts")),
+        errors="coerce",
+        utc=True,
+    )
+
+
 def _parse_row_timestamp_ms(row: pd.Series) -> float | None:
     for col in ("timestamp_utc", "timestamp", "time", "ts"):
         if col in row and pd.notna(row[col]):
@@ -368,17 +383,125 @@ def _enrich_dataframe(
         out["bssid"] = _normalize_mac_series(out["bssid"])
 
     matched = 0
-    # TODO: O(n×m) matching — candidate for indexed lookup (time-bucket + identity key) for large scans.
-    for idx, row in out.iterrows():
-        match = _compute_match(row, protocol=protocol, wifi_df=wifi_df, ble_df=ble_df, parameters=parameters)
+    if protocol == ProtocolMode.WIFI:
+        wifi_frames = wifi_df.copy()
+        if not wifi_frames.empty:
+            wifi_frames["src_mac"] = _normalize_mac_series(wifi_frames["src_mac"])
+            wifi_frames["dst_mac"] = _normalize_mac_series(wifi_frames["dst_mac"])
+            wifi_frames["bssid"] = _normalize_mac_series(wifi_frames["bssid"])
+            wifi_frames["timestamp_utc"] = pd.to_datetime(
+                wifi_frames["timestamp_utc"],
+                errors="coerce",
+                utc=True,
+            )
+            wifi_frames = wifi_frames.dropna(subset=["timestamp_utc"])
 
-        for key in ("match_found", "match_delta_ms", "match_score", "match_method"):
-            out.at[idx, key] = match.get(key)
+        work = out.copy()
+        work["_row_idx"] = work.index
+        work["_timestamp_utc"] = _build_timestamp_series(work)
+        work["_row_id"] = _normalize_mac_series(
+            _first_present_column(work, ("src_mac", "mac", "source_mac", "addr"))
+        )
+        work["_row_id"] = work["_row_id"].replace("", pd.NA)
+        work["_frame_type"] = work.get("frame_type", pd.Series("", index=work.index)).astype(str).str.lower().str.strip()
+        work["_expects_broadcast"] = work["_frame_type"].map(
+            {"beacon": True, "probe-req": True, "probe-resp": False}
+        )
+        work["_row_bssid"] = _normalize_mac_series(work.get("bssid", pd.Series("", index=work.index)))
 
-        frame = match.get("frame")
-        if frame is not None:
-            matched += 1
-            if protocol == ProtocolMode.BLE:
+        valid_rows = work[work["_timestamp_utc"].notna() & work["_row_id"].notna()].copy()
+        if not valid_rows.empty and not wifi_frames.empty:
+            pcap_for_merge = wifi_frames.copy()
+            pcap_for_merge["_row_id"] = pcap_for_merge["src_mac"]
+            pcap_for_merge = pcap_for_merge.rename(columns={"timestamp_utc": "pcap_timestamp_utc"})
+
+            pcap_broadcast = pcap_for_merge[pcap_for_merge["dst_mac"] == _BROADCAST_MAC].copy()
+            pcap_unicast = pcap_for_merge[pcap_for_merge["dst_mac"] != _BROADCAST_MAC].copy()
+
+            merged_parts: list[pd.DataFrame] = []
+            partitions = [
+                (valid_rows[valid_rows["_expects_broadcast"] == True], pcap_broadcast),
+                (valid_rows[valid_rows["_expects_broadcast"] == False], pcap_unicast),
+                (valid_rows[valid_rows["_expects_broadcast"].isna()], pcap_for_merge),
+            ]
+            for csv_part, pcap_part in partitions:
+                if csv_part.empty:
+                    continue
+                csv_sorted = csv_part.sort_values("_timestamp_utc")
+                if pcap_part.empty:
+                    merged_parts.append(csv_sorted.copy())
+                    continue
+                pcap_sorted = pcap_part.sort_values("pcap_timestamp_utc")
+                merged_parts.append(
+                    pd.merge_asof(
+                        csv_sorted,
+                        pcap_sorted,
+                        left_on="_timestamp_utc",
+                        right_on="pcap_timestamp_utc",
+                        by="_row_id",
+                        direction="nearest",
+                        tolerance=pd.Timedelta(milliseconds=parameters.match_time_window_ms),
+                        suffixes=("", "_pcap"),
+                    )
+                )
+
+            if merged_parts:
+                merged = pd.concat(merged_parts, axis=0).sort_values("_row_idx")
+                pcap_bssid_col = "bssid_pcap" if "bssid_pcap" in merged.columns else "bssid"
+                pcap_dst_col = "dst_mac_pcap" if "dst_mac_pcap" in merged.columns else "dst_mac"
+                matched_by_time = merged["pcap_timestamp_utc"].notna()
+                delta_ms = (
+                    (merged["_timestamp_utc"] - merged["pcap_timestamp_utc"])
+                    .abs()
+                    .dt.total_seconds()
+                    .mul(1000.0)
+                )
+                time_score = (1.0 - (delta_ms / float(parameters.match_time_window_ms))).clip(lower=0.0)
+                context_score = (
+                    merged["_row_bssid"].notna()
+                    & (merged["_row_bssid"] != "")
+                    & merged[pcap_bssid_col].notna()
+                    & (merged[pcap_bssid_col] != "")
+                    & (merged["_row_bssid"] == merged[pcap_bssid_col])
+                ).astype(float)
+                score = (
+                    float(parameters.time_score_weight) * time_score
+                    + float(parameters.identity_score_weight) * 1.0
+                    + float(parameters.wifi_context_weight) * context_score
+                ).where(matched_by_time, 0.0)
+                found = matched_by_time & (score >= float(parameters.match_threshold))
+
+                out.loc[merged["_row_idx"], "match_delta_ms"] = delta_ms.values
+                out.loc[merged["_row_idx"], "match_score"] = score.values
+                out.loc[merged["_row_idx"], "match_found"] = found.values
+                out.loc[merged["_row_idx"], "match_method"] = (
+                    pd.Series(EnrichmentMatchMethod.NO_MATCH.value, index=merged.index)
+                    .where(~found, EnrichmentMatchMethod.TIME_IDENTITY_BEST_MATCH.value)
+                    .values
+                )
+
+                accepted = merged[found].copy()
+                if not accepted.empty:
+                    matched = int(accepted.shape[0])
+                    out.loc[accepted["_row_idx"], "enr_dst_mac"] = accepted[pcap_dst_col].values
+                    out.loc[accepted["_row_idx"], "enr_bssid"] = accepted[pcap_bssid_col].values
+                    out.loc[accepted["_row_idx"], "enr_seq_num"] = accepted["seq_ctl"].values
+                    out.loc[accepted["_row_idx"], "enr_frame_length"] = accepted["frame_len"].values
+                    out.loc[accepted["_row_idx"], "enr_ie_ids"] = accepted["ie_ids"].values
+                    out.loc[accepted["_row_idx"], "enr_ie_fingerprint"] = accepted["ie_fingerprint"].values
+                    out.loc[accepted["_row_idx"], "enr_ie_vendor_ouis"] = accepted["ie_vendor_ouis"].values
+    else:
+        # BLE matching remains on the existing row-wise matcher in this task. The performance issue
+        # observed in field use is Wi-Fi specific, while BLE extraction itself is best-effort.
+        for idx, row in out.iterrows():
+            match = _compute_match(row, protocol=protocol, wifi_df=wifi_df, ble_df=ble_df, parameters=parameters)
+
+            for key in ("match_found", "match_delta_ms", "match_score", "match_method"):
+                out.at[idx, key] = match.get(key)
+
+            frame = match.get("frame")
+            if frame is not None:
+                matched += 1
                 out.at[idx, "enr_ble_advertiser_addr"] = frame.get("ble_advertiser_addr")
                 out.at[idx, "enr_ble_addr_type"] = frame.get("ble_addr_type")
                 out.at[idx, "enr_ble_event_type"] = frame.get("ble_event_type")
@@ -388,14 +511,6 @@ def _enrich_dataframe(
                 out.at[idx, "enr_ble_tx_power"] = frame.get("ble_tx_power")
                 out.at[idx, "enr_ble_flags"] = frame.get("ble_flags")
                 out.at[idx, "enr_ble_vendor_company_id"] = frame.get("ble_vendor_company_id")
-            else:
-                out.at[idx, "enr_dst_mac"] = frame.get("dst_mac")
-                out.at[idx, "enr_bssid"] = frame.get("bssid")
-                out.at[idx, "enr_seq_num"] = frame.get("seq_ctl")
-                out.at[idx, "enr_frame_length"] = frame.get("frame_len")
-                out.at[idx, "enr_ie_ids"] = frame.get("ie_ids")
-                out.at[idx, "enr_ie_fingerprint"] = frame.get("ie_fingerprint")
-                out.at[idx, "enr_ie_vendor_ouis"] = frame.get("ie_vendor_ouis")
 
     total = len(out)
     for col in _REQUIRED_ENRICH_COLUMNS:
