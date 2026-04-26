@@ -142,6 +142,7 @@ class LocalizationService:
             lat = float(row[lat_col])
             lon = float(row[lon_col])
             score = math.exp(-((measured - rssi_at_1m) ** 2) / (2 * max(sigma, 0.1) ** 2))
+            score = max(score, 1e-300)
             estimates.append((lat + distance / 111_111.0, lon + distance / 111_111.0, score))
 
         total_score = sum(item[2] for item in estimates)

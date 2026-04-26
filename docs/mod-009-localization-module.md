@@ -42,7 +42,8 @@ Each successful cluster returns:
 Failed clusters return failed status and warnings.
 
 Numerical stability:
-- Clusters that produce a non-finite or zero aggregate score are marked failed with warning instead of raising.
+- Per-sample scores are floored to a tiny positive epsilon to reduce floating-point underflow collapse.
+- Clusters that still produce a non-finite or zero aggregate score are marked failed with warning instead of raising.
 
 ## Boundaries
 

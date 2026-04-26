@@ -104,3 +104,5 @@ def test_localization_requires_reid(client_and_services, data_root: Path) -> Non
         time.sleep(0.05)
 
     assert body["execution"]["status"] == "failed"
+    assert "traceback" in body["execution"]["result_metadata"]
+    assert "Localization requires an active REID artifact." in body["execution"]["result_metadata"]["traceback"]
