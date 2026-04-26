@@ -1,4 +1,4 @@
-# API Contracts — Phase 0 + Phase 1 + Phase 2 (Overview) + Phase 3 (Calibration) + Phase 5 (Re-ID)
+# API Contracts — Phase 0 + Phase 1 + Phase 2 (Overview) + Phase 3 (Calibration) + Phase 5 (Re-ID) + Phase 6 (Localization)
 
 ## Purpose
 Document currently implemented public API groups for session/inventory plumbing and Overview inspection.
@@ -18,6 +18,8 @@ Implemented endpoints:
 - `POST /api/sessions/{session_id}/calibration/fallback`
 - `POST /api/sessions/{session_id}/enrichment/run`
 - `POST /api/sessions/{session_id}/reid/run`
+- `POST /api/sessions/{session_id}/localization/run`
+- `GET /api/executions/{execution_id}`
 
 Overview behavior notes:
 - If `selected_csv_file` is omitted/null and no prior selected CSV is stored, Overview returns context only and no file-level outputs.
@@ -36,6 +38,13 @@ Re-ID behavior notes:
 - Re-ID writes official `*_REID.csv`, overwrites silently, and activates the generated artifact.
 - Re-ID response returns output metadata, row/cluster counts, and quality statistics.
 
+Localization behavior notes:
+- Localization run endpoint creates async execution and returns `execution_id`.
+- Execution status endpoint reports `queued/running/succeeded/failed` plus localization payload when available.
+- Localization requires active REID and active calibration/fallback in session state.
+- Pre-filters support optional cluster ID list and optional MAC address list before cluster-based computation.
+- View controls are frontend-only and do not trigger execution reruns.
+
 ## Current known TODOs
 - TODO: add explicit error code map per endpoint contract.
 - TODO: add request/response examples for both Wi-Fi and BLE sample inputs.
@@ -45,3 +54,4 @@ Re-ID behavior notes:
 - 2026-04-16: Added Phase 2 Overview API contract and behavior.
 - 2026-04-16: Added Phase 3 Calibration API contract and behavior notes.
 - 2026-04-25: Added Phase 5 Re-ID endpoint and behavior notes.
+- 2026-04-26: Added Phase 6 Localization async execution API and behavior notes.
