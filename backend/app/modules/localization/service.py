@@ -111,7 +111,7 @@ class LocalizationService:
     ) -> LocalizationClusterResult:
         lat_col = self._first_existing_column(cluster_rows, ["latitude", "lat", "gps_lat", "gps_latitude"])
         lon_col = self._first_existing_column(cluster_rows, ["longitude", "lon", "lng", "gps_lon", "gps_longitude"])
-        rssi_col = self._first_existing_column(cluster_rows, ["rssi", "signal_dbm", "signal_strength"])
+        rssi_col = self._first_existing_column(cluster_rows, ["rssi", "rssi_dbm", "signal_dbm", "signal_strength"])
 
         warnings: list[str] = []
         if not lat_col or not lon_col or not rssi_col:

@@ -26,6 +26,10 @@ Execution registry is in-memory for this phase.
 - Filtering narrows rows before computation
 - Computation remains cluster-based (`cluster_id`) after filtering
 
+Input column compatibility notes:
+- GPS accepted aliases include `latitude/lat/gps_lat/gps_latitude` and `longitude/lon/lng/gps_lon/gps_longitude`
+- RSSI accepted aliases include `rssi`, `rssi_dbm`, `signal_dbm`, and `signal_strength`
+
 ## Output contract
 
 Each successful cluster returns:
@@ -46,3 +50,4 @@ Failed clusters return failed status and warnings.
 ## Last updated
 
 - 2026-04-26: Added async localization API + execution tracking + cluster/mac pre-filter support.
+- 2026-04-26: Added `rssi_dbm` RSSI alias support for REID artifacts.

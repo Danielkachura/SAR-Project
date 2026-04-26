@@ -261,11 +261,14 @@ export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview,
           <p>Rows: {reidResult.row_count} | Clusters: {reidResult.cluster_count} | Singleton ratio: {(reidResult.quality_stats.singleton_ratio * 100).toFixed(1)}%</p>
           <p>High confidence ratio: {(reidResult.quality_stats.high_confidence_ratio * 100).toFixed(1)}%</p>
           <p>Active REID for Localization: <strong>{session.active_reid_artifact_id ? "Yes" : "No"}</strong></p>
-          <button onClick={onOpenLocalization} disabled={!session.active_reid_artifact_id}>
-            Open Localization
-          </button>
         </section>
       )}
+
+      <section style={{ marginBottom: "1rem" }}>
+        <button onClick={onOpenLocalization} disabled={!session.active_reid_artifact_id}>
+          Open Localization
+        </button>
+      </section>
 
       {enrichedArtifacts.length > 0 && (
         <section style={{ marginBottom: "1rem" }}>

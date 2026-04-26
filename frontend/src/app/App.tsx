@@ -45,11 +45,18 @@ export default function App() {
   }
 
   return (
-    <OverviewPage
-      session={session}
-      onSessionUpdate={setSession}
-      onOpenCalibration={() => setPage("calibration")}
-      onOpenEnrichment={() => setPage("enrichment")}
-    />
+    <div>
+      <div style={{ padding: "1rem 1rem 0 1rem" }}>
+        <button onClick={() => { setSession(null); setPage("overview"); }}>
+          Change Folder
+        </button>
+      </div>
+      <OverviewPage
+        session={session}
+        onSessionUpdate={setSession}
+        onOpenCalibration={() => setPage("calibration")}
+        onOpenEnrichment={() => setPage("enrichment")}
+      />
+    </div>
   );
 }

@@ -191,10 +191,6 @@ export function CalibrationPage({ session, onSessionUpdate, onBackToOverview }: 
         onRun={handleRun}
       />
 
-      <button onClick={handleRun} disabled={!canRun || isLoading}>
-        {isLoading ? "Running..." : "Run Calibration"}
-      </button>
-
       {result && (
         <>
           <CalibrationScatter result={result} />
