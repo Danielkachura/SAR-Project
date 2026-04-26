@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.canonical_models import OverviewSpatialPayload, SpatialPoint
+from app.models.canonical_models import LocalizationUncertaintyRegion, OverviewSpatialPayload, SpatialPoint
 
 
 class SpatialPresentationService:
@@ -31,6 +31,20 @@ class SpatialPresentationService:
             points.append(SpatialPoint(latitude=lat, longitude=lon, hover_metadata=hover_metadata))
 
         return OverviewSpatialPayload(points=points)
+
+    def build_localization_overlay_points(
+        self,
+        *,
+        cluster_id: str,
+        peak_latitude: float,
+        peak_longitude: float,
+        uncertainty_regions: list[LocalizationUncertaintyRegion],
+    ) -> dict[str, Any]:
+        return {
+            "cluster_id": cluster_id,
+            "peak": {"latitude": peak_latitude, "longitude": peak_longitude},
+            "uncertainty_regions": [region.model_dump() for region in uncertainty_regions],
+        }
 
     @staticmethod
     def _parse_float_from_candidates(row: dict[str, str], keys: tuple[str, ...]) -> float | None:

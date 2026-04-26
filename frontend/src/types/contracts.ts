@@ -300,3 +300,65 @@ export interface ReIdRunPayload {
   quality_stats: ReIdQualityStats;
   warnings: string[];
 }
+
+export type ExecutionStatus = "queued" | "running" | "succeeded" | "failed";
+
+export interface ExecutionRecord {
+  execution_id: string;
+  stage: string;
+  session_id: string;
+  status: ExecutionStatus;
+  created_at: string;
+  updated_at: string;
+  warnings: string[];
+  error_message: string | null;
+  result_metadata: Record<string, unknown>;
+}
+
+export interface LocalizationParameters {
+  bounds_mode?: "manual_rectangle" | "auto_track_plus_buffer";
+  search_area_buffer_m?: number;
+  path_loss_n?: number | null;
+  rssi_at_1m?: number | null;
+  sigma?: number | null;
+  grid_resolution_m?: number;
+  dynamic_sigma_alpha?: number;
+  confidence_cutoff?: number;
+  enable_ransac?: boolean;
+  ransac_thresh_db?: number;
+  ransac_iters?: number;
+  uncertainty_target_mass_q?: number;
+  min_samples_per_cluster?: number;
+}
+
+export interface LocalizationPreFilters {
+  cluster_ids?: string[];
+  mac_addresses?: string[];
+}
+
+export interface LocalizationUncertaintyRegion {
+  latitude: number;
+  longitude: number;
+  radius_m: number;
+  confidence_mass_q: number;
+}
+
+export interface LocalizationClusterResult {
+  cluster_id: string;
+  sample_count: number;
+  status: "succeeded" | "failed";
+  primary_peak_latitude: number | null;
+  primary_peak_longitude: number | null;
+  peak_score: number | null;
+  uncertainty_regions: LocalizationUncertaintyRegion[];
+  warnings: string[];
+}
+
+export interface LocalizationRunPayload {
+  input_reid_file: string;
+  protocol: ProtocolMode;
+  parameters: LocalizationParameters;
+  pre_filters: LocalizationPreFilters;
+  cluster_results: LocalizationClusterResult[];
+  warnings: string[];
+}

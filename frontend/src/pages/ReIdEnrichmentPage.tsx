@@ -17,6 +17,7 @@ interface Props {
   session: SessionState;
   onSessionUpdate: (session: SessionState) => void;
   onBackToOverview: () => void;
+  onOpenLocalization: () => void;
 }
 
 function qualityBadge(rate: number): string {
@@ -25,7 +26,7 @@ function qualityBadge(rate: number): string {
   return "poor";
 }
 
-export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview }: Props) {
+export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview, onOpenLocalization }: Props) {
   const [inventory, setInventory] = useState<FolderInventory | null>(null);
   const [selectedCsv, setSelectedCsv] = useState<string>("");
   const [selectedPcap, setSelectedPcap] = useState<string>("");
@@ -262,6 +263,12 @@ export function ReIdEnrichmentPage({ session, onSessionUpdate, onBackToOverview 
           <p>Active REID for Localization: <strong>{session.active_reid_artifact_id ? "Yes" : "No"}</strong></p>
         </section>
       )}
+
+      <section style={{ marginBottom: "1rem" }}>
+        <button onClick={onOpenLocalization} disabled={!session.active_reid_artifact_id}>
+          Open Localization
+        </button>
+      </section>
 
       {enrichedArtifacts.length > 0 && (
         <section style={{ marginBottom: "1rem" }}>

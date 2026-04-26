@@ -10,7 +10,11 @@ from app.models.canonical_models import (
     CalibrationSessionState,
     EnrichmentParameters,
     EnrichmentRunPayload,
+    ExecutionRecord,
     FolderInventory,
+    LocalizationParameters,
+    LocalizationPreFilters,
+    LocalizationRunPayload,
     ReIdParameters,
     ReIdRunPayload,
     OverviewPayload,
@@ -118,3 +122,18 @@ class ReIdRunRequest(BaseModel):
 class ReIdRunResponse(BaseModel):
     reid: ReIdRunPayload
     session: SessionState
+
+
+class LocalizationRunRequest(BaseModel):
+    selected_reid_artifact_id: str | None = None
+    parameters: LocalizationParameters = Field(default_factory=LocalizationParameters)
+    pre_filters: LocalizationPreFilters = Field(default_factory=LocalizationPreFilters)
+
+
+class LocalizationRunResponse(BaseModel):
+    execution: ExecutionRecord
+
+
+class ExecutionStatusResponse(BaseModel):
+    execution: ExecutionRecord
+    localization: LocalizationRunPayload | None = None

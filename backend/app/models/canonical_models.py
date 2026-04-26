@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from enum import Enum
 from typing import Any, Literal
 
@@ -356,3 +357,80 @@ class ReIdRunPayload(BaseModel):
     cluster_count: int
     quality_stats: ReIdQualityStats
     warnings: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# MOD-009 Localization + Execution Tracking
+# ---------------------------------------------------------------------------
+
+
+class ExecutionStatus(str, Enum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class LocalizationBoundsMode(str, Enum):
+    MANUAL_RECTANGLE = "manual_rectangle"
+    AUTO_TRACK_PLUS_BUFFER = "auto_track_plus_buffer"
+
+
+class LocalizationParameters(BaseModel):
+    bounds_mode: LocalizationBoundsMode = LocalizationBoundsMode.AUTO_TRACK_PLUS_BUFFER
+    search_area_buffer_m: float = 20.0
+    path_loss_n: float | None = None
+    rssi_at_1m: float | None = None
+    sigma: float | None = None
+    grid_resolution_m: float = 5.0
+    dynamic_sigma_alpha: float = 0.0
+    confidence_cutoff: float = 0.2
+    enable_ransac: bool = True
+    ransac_thresh_db: float = 4.0
+    ransac_iters: int = 100
+    uncertainty_target_mass_q: float = 0.68
+    min_samples_per_cluster: int = 3
+
+
+class LocalizationPreFilters(BaseModel):
+    cluster_ids: list[str] = Field(default_factory=list)
+    mac_addresses: list[str] = Field(default_factory=list)
+
+
+class LocalizationUncertaintyRegion(BaseModel):
+    latitude: float
+    longitude: float
+    radius_m: float
+    confidence_mass_q: float
+
+
+class LocalizationClusterResult(BaseModel):
+    cluster_id: str
+    sample_count: int
+    status: Literal["succeeded", "failed"]
+    primary_peak_latitude: float | None = None
+    primary_peak_longitude: float | None = None
+    peak_score: float | None = None
+    uncertainty_regions: list[LocalizationUncertaintyRegion] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class LocalizationRunPayload(BaseModel):
+    input_reid_file: str
+    protocol: ProtocolMode
+    parameters: LocalizationParameters
+    pre_filters: LocalizationPreFilters
+    cluster_results: list[LocalizationClusterResult] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class ExecutionRecord(BaseModel):
+    execution_id: str
+    stage: str
+    session_id: str
+    status: ExecutionStatus
+    created_at: datetime
+    updated_at: datetime
+    warnings: list[str] = Field(default_factory=list)
+    error_message: str | None = None
+    result_metadata: dict[str, Any] = Field(default_factory=dict)
