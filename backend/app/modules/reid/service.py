@@ -357,8 +357,9 @@ class ReIdService:
             if bssid_match:
                 evidence_bits.append("bssid")
 
-            # Weighting: MAC (0.3), Time (0.1), Seq (0.2), FP (0.25), Vendor (0.05), BSSID (0.1)
-            score = 0.30 * mac_match + 0.10 * time_score + 0.20 * sequence_score + 0.25 * fp_match + 0.05 * vendor_match + 0.10 * bssid_match
+            # Weighting: MAC (0.5), Time (0.3), Seq (0.1), FP (0.05), Vendor (0.02), BSSID (0.03)
+            # This ensures a Time + MAC match yields 0.8, which crosses most thresholds.
+            score = 0.50 * mac_match + 0.30 * time_score + 0.10 * sequence_score + 0.05 * fp_match + 0.02 * vendor_match + 0.03 * bssid_match
             
             if (sequence_score > 0 and fp_match > 0) or mac_match > 0:
                 method = ReIdMethod.WIFI_SEQUENCE_FINGERPRINT_MATCH
